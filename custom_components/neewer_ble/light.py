@@ -11,16 +11,14 @@ from homeassistant.components.light import (
     ATTR_HS_COLOR,
     ColorMode,
     LightEntity,
-    LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .neewer_device import NeewerLightDevice
+from .device import NeewerLightDevice
+from .entity import NeewerEntityMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +44,7 @@ async def async_setup_entry(
     async_add_entities([NeewerBLELight(device, entry)])
 
 
-class NeewerBLELight(LightEntity):
+class NeewerBLELight(NeewerEntityMixin, LightEntity):
     """Representation of a Neewer BLE Light."""
 
     _attr_has_entity_name = True
@@ -55,11 +53,7 @@ class NeewerBLELight(LightEntity):
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the light."""
-        self._device = device
-        self._entry = entry
-        
-        # Entity attributes
-        self._attr_unique_id = device.address.replace(":", "_").lower()
+        self._setup_neewer_entity(device, entry)
         
         # Determine supported color modes
         if device.supports_rgb:
@@ -74,14 +68,6 @@ class NeewerBLELight(LightEntity):
         self._attr_min_color_temp_kelvin = min_kelvin
         self._attr_max_color_temp_kelvin = max_kelvin
         
-        # Device info
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device.address)},
-            name=entry.data.get(CONF_NAME, device.name),
-            manufacturer="Neewer",
-            model=device.model_name,
-        )
-
     @property
     def is_on(self) -> bool:
         """Return true if light is on."""

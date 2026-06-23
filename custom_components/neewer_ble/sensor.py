@@ -11,14 +11,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .neewer_device import NeewerLightDevice
+from .device import NeewerLightDevice
+from .entity import NeewerEntityMixin
 
 SCAN_INTERVAL = timedelta(seconds=10)
 
@@ -34,7 +33,7 @@ async def async_setup_entry(
     async_add_entities([NeewerSignalStrengthSensor(device, entry)])
 
 
-class NeewerSignalStrengthSensor(SensorEntity):
+class NeewerSignalStrengthSensor(NeewerEntityMixin, SensorEntity):
     """Representation of the latest known BLE signal strength."""
 
     _attr_has_entity_name = True
@@ -46,14 +45,7 @@ class NeewerSignalStrengthSensor(SensorEntity):
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the sensor."""
-        self._device = device
-        self._attr_unique_id = f"{device.address.replace(':', '_').lower()}_rssi"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device.address)},
-            name=entry.data.get(CONF_NAME, device.name),
-            manufacturer="Neewer",
-            model=device.model_name,
-        )
+        self._setup_neewer_entity(device, entry, "rssi")
 
     @property
     def native_value(self) -> int | None:
@@ -70,12 +62,6 @@ class NeewerSignalStrengthSensor(SensorEntity):
 
         if ble_device is not None:
             self._device.update_ble_device(ble_device)
-
-    async def async_added_to_hass(self) -> None:
-        """Register for device updates."""
-        self.async_on_remove(
-            self._device.add_update_callback(self._handle_device_update)
-        )
 
     @callback
     def _handle_device_update(self) -> None:

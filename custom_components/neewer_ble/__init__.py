@@ -7,24 +7,20 @@ import logging
 from bleak.backends.device import BLEDevice
 
 from homeassistant.components.bluetooth import (
-    BluetoothScanningMode,
-    BluetoothServiceInfoBleak,
     async_ble_device_from_address,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     DOMAIN,
-    PLATFORMS,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_TEMP,
     CONF_DEFAULT_BRIGHTNESS,
     CONF_DEFAULT_COLOR_TEMP,
 )
-from .neewer_device import NeewerLightDevice
+from .device import NeewerLightDevice
 
 _LOGGER = logging.getLogger(__name__)
 

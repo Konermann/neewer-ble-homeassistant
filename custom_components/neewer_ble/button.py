@@ -6,14 +6,13 @@ import logging
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .neewer_device import NeewerLightDevice
+from .device import NeewerLightDevice
+from .entity import NeewerEntityMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ async def async_setup_entry(
     async_add_entities([NeewerReconnectButton(device, entry)])
 
 
-class NeewerReconnectButton(ButtonEntity):
+class NeewerReconnectButton(NeewerEntityMixin, ButtonEntity):
     """Button that refreshes the active BLE connection."""
 
     _attr_has_entity_name = True
@@ -39,14 +38,7 @@ class NeewerReconnectButton(ButtonEntity):
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the button."""
-        self._device = device
-        self._attr_unique_id = f"{device.address.replace(':', '_').lower()}_reconnect"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device.address)},
-            name=entry.data.get(CONF_NAME, device.name),
-            manufacturer="Neewer",
-            model=device.model_name,
-        )
+        self._setup_neewer_entity(device, entry, "reconnect")
 
     async def async_press(self) -> None:
         """Refresh the light's BLE connection."""
