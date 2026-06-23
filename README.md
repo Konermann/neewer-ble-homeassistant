@@ -4,12 +4,16 @@
 
 A Home Assistant custom integration for controlling Neewer LED lights via Bluetooth Low Energy (BLE).
 
+This repository is a fork of
+[darinlarimore/neewer-ble-homeassistant](https://github.com/darinlarimore/neewer-ble-homeassistant).
+
 ## Supported Devices
 
 This integration supports Neewer lights that use Bluetooth for control, including:
 
 ### Tested
 - **MS150B** - 130W Bi-Color COB Light
+- **CB100C** - RGB COB Light
 
 ### Should Work (Untested)
 - MS60C - 65W RGB COB Light
@@ -18,7 +22,7 @@ This integration supports Neewer lights that use Bluetooth for control, includin
 - SL-80 - Bi-Color Panel
 - SNL-660 - Bi-Color Panel
 - GL1 - Key Light
-- CB100C / CB300B - COB Lights
+- CB300B - COB Light
 - RGB1 - Light Wand
 - TL60 RGB - Tube Light
 
