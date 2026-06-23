@@ -1,4 +1,4 @@
-# Neewer BLE Lights for Home Assistant
+# Neewer BLE Lights Extended for Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -7,6 +7,15 @@ Control Neewer LED lights from Home Assistant over Bluetooth Low Energy (BLE).
 
 This repository is a fork of
 [darinlarimore/neewer-ble-homeassistant](https://github.com/darinlarimore/neewer-ble-homeassistant).
+
+## Why This Fork?
+
+The upstream project appears to be inactive, and this fork continues the work
+for current Home Assistant versions and newer Neewer lights.
+
+The goal is to keep the original integration spirit while adding reliability
+improvements, connection controls, diagnostics, model overrides, and tested
+support for additional devices.
 
 ## Highlights
 
