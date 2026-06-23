@@ -81,6 +81,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = device
 
+    # Start connecting immediately so the first user command does not pay the
+    # full BLE connection cost.
+    _LOGGER.debug("Scheduling initial BLE connection for %s", name)
+    initial_connect_task = hass.async_create_task(device.connect())
+    entry.async_on_unload(initial_connect_task.cancel)
+
     # Set up platforms
     _LOGGER.debug("Forwarding setup to platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

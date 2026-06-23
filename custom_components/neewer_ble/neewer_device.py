@@ -57,6 +57,8 @@ class NeewerLightDevice:
         self._ble_device = ble_device
         self._client: BleakClient | None = None
         self._lock = asyncio.Lock()
+        self._command_lock = asyncio.Lock()
+        self._disconnect_requested = False
 
         # Device info
         self._address = ble_device.address
@@ -177,7 +179,17 @@ class NeewerLightDevice:
     @property
     def is_connected(self) -> bool:
         """Return True if connected."""
-        return self._connected and self._client is not None and self._client.is_connected
+        return self._client is not None and self._client.is_connected
+
+    def _handle_disconnect(self, client: BleakClient) -> None:
+        """Handle an unexpected BLE disconnect."""
+        if self._client is client:
+            self._client = None
+
+        self._connected = False
+
+        if not self._disconnect_requested:
+            _LOGGER.warning("Disconnected from %s", self._name)
 
     def _get_hardware_mac_macos(self) -> str | None:
         """Get hardware MAC address on macOS using system_profiler.
@@ -276,6 +288,9 @@ class NeewerLightDevice:
             return True
 
         async with self._lock:
+            if self.is_connected:
+                return True
+
             try:
                 _LOGGER.debug("Connecting to %s", self._address)
 
@@ -284,6 +299,7 @@ class NeewerLightDevice:
                     BleakClientWithServiceCache,
                     self._ble_device,
                     self._name,
+                    self._handle_disconnect,
                     max_attempts=MAX_CONNECTION_RETRIES,
                 )
                 self._connected = True
@@ -303,51 +319,73 @@ class NeewerLightDevice:
 
     async def disconnect(self) -> None:
         """Disconnect from the device."""
-        if self._client:
+        async with self._lock:
+            client = self._client
+            if client is None:
+                self._connected = False
+                return
+
             try:
+                self._disconnect_requested = True
                 # Add timeout to prevent hanging on disconnect
-                await asyncio.wait_for(self._client.disconnect(), timeout=5.0)
+                await asyncio.wait_for(client.disconnect(), timeout=5.0)
             except asyncio.TimeoutError:
                 _LOGGER.warning("Timeout disconnecting from %s, forcing cleanup", self._name)
             except Exception as err:
                 _LOGGER.debug("Error disconnecting from %s: %s", self._name, err)
             finally:
-                self._client = None
+                if self._client is client:
+                    self._client = None
                 self._connected = False
+                self._disconnect_requested = False
 
-    async def _send_command(self, command: list[int], keep_connected: bool = False) -> bool:
+    async def _send_command(self, command: list[int], keep_connected: bool = True) -> bool:
         """Send a command to the device.
 
         Args:
             command: The command bytes to send
-            keep_connected: If True, don't disconnect after sending (for multi-command sequences)
+            keep_connected: If True, keep the BLE connection open after sending
         """
-        if not await self.connect():
-            return False
+        return await self._send_commands([command], keep_connected=keep_connected)
 
-        success = False
-        try:
-            _LOGGER.info(
-                "Sending to %s: %s (decimal: %s)",
-                self._name,
-                [hex(b) for b in command],
-                command,
-            )
-            await self._client.write_gatt_char(
-                NEEWER_WRITE_CHARACTERISTIC_UUID,
-                bytes(command),
-                response=False,
-            )
-            success = True
-            return True
-        except BleakError as err:
-            _LOGGER.error("Failed to send command: %s", err)
-            self._connected = False
-            return False
-        finally:
-            # Always disconnect on error, or if not keeping connected
-            if not success or not keep_connected:
-                await self.disconnect()
+    async def _send_commands(
+        self,
+        commands: list[list[int]],
+        delay: float = 0.0,
+        keep_connected: bool = True,
+    ) -> bool:
+        """Send one or more commands as a single serialized BLE operation."""
+        async with self._command_lock:
+            if not await self.connect():
+                return False
+
+            success = False
+            try:
+                for index, command in enumerate(commands):
+                    _LOGGER.debug(
+                        "Sending to %s: %s (decimal: %s)",
+                        self._name,
+                        [hex(b) for b in command],
+                        command,
+                    )
+                    await self._client.write_gatt_char(
+                        NEEWER_WRITE_CHARACTERISTIC_UUID,
+                        bytes(command),
+                        response=False,
+                    )
+                    if delay and index < len(commands) - 1:
+                        await asyncio.sleep(delay)
+
+                success = True
+                return True
+            except BleakError as err:
+                _LOGGER.error("Failed to send command: %s", err)
+                self._connected = False
+                return False
+            finally:
+                # Always disconnect on error, or when explicitly requested.
+                if not success or not keep_connected:
+                    await self.disconnect()
 
     def _build_cct_command(self, brightness: int, color_temp: int) -> list[int]:
         """Build a CCT (brightness + color temperature) command.
@@ -494,12 +532,8 @@ class NeewerLightDevice:
             # Old CCT-only lights need separate brightness and temp commands
             try:
                 bri_cmd = self._build_brightness_only_command(self._brightness)
-                if not await self._send_command(bri_cmd, keep_connected=True):
-                    return False
-                await asyncio.sleep(0.05)  # Small delay between commands
-
                 temp_cmd = self._build_temp_only_command(self._color_temp)
-                return await self._send_command(temp_cmd)
+                return await self._send_commands([bri_cmd, temp_cmd], delay=0.05)
             except Exception as err:
                 _LOGGER.error("Error in multi-command sequence: %s", err)
                 await self.disconnect()  # Ensure cleanup
@@ -583,60 +617,66 @@ class NeewerLightDevice:
         self._notify_event.set()
 
     async def _send_command_with_response(
-        self, command: list[int], timeout: float = 2.0
+        self, command: list[int], timeout: float = 2.0, keep_connected: bool = True
     ) -> bytes | None:
         """Send a command and wait for notification response.
 
         Args:
             command: The command bytes to send
             timeout: How long to wait for response
+            keep_connected: If True, keep the BLE connection open after querying
 
         Returns:
             The notification response data, or None if failed/timeout
         """
-        if not await self.connect():
-            return None
+        async with self._command_lock:
+            if not await self.connect():
+                return None
 
-        try:
-            # Clear any previous notification data
-            self._notify_data = None
-            self._notify_event.clear()
-
-            # Start notifications
-            await self._client.start_notify(
-                NEEWER_NOTIFY_CHARACTERISTIC_UUID, self._notify_callback
-            )
-
-            # Send the command
-            _LOGGER.debug(
-                "Sending query to %s: %s", self._name, [hex(b) for b in command]
-            )
-            await self._client.write_gatt_char(
-                NEEWER_WRITE_CHARACTERISTIC_UUID,
-                bytes(command),
-                response=False,
-            )
-
-            # Wait for notification response
+            success = False
             try:
-                await asyncio.wait_for(self._notify_event.wait(), timeout=timeout)
-                return self._notify_data
-            except asyncio.TimeoutError:
-                _LOGGER.debug("Timeout waiting for response from %s", self._name)
+                # Clear any previous notification data
+                self._notify_data = None
+                self._notify_event.clear()
+
+                # Start notifications
+                await self._client.start_notify(
+                    NEEWER_NOTIFY_CHARACTERISTIC_UUID, self._notify_callback
+                )
+
+                # Send the command
+                _LOGGER.debug(
+                    "Sending query to %s: %s", self._name, [hex(b) for b in command]
+                )
+                await self._client.write_gatt_char(
+                    NEEWER_WRITE_CHARACTERISTIC_UUID,
+                    bytes(command),
+                    response=False,
+                )
+
+                # Wait for notification response
+                try:
+                    await asyncio.wait_for(self._notify_event.wait(), timeout=timeout)
+                    success = True
+                    return self._notify_data
+                except asyncio.TimeoutError:
+                    _LOGGER.debug("Timeout waiting for response from %s", self._name)
+                    success = True
+                    return None
+                finally:
+                    # Stop notifications
+                    try:
+                        await self._client.stop_notify(NEEWER_NOTIFY_CHARACTERISTIC_UUID)
+                    except Exception:
+                        pass
+
+            except BleakError as err:
+                _LOGGER.debug("Error querying %s: %s", self._name, err)
+                self._connected = False
                 return None
             finally:
-                # Stop notifications
-                try:
-                    await self._client.stop_notify(NEEWER_NOTIFY_CHARACTERISTIC_UUID)
-                except Exception:
-                    pass
-
-        except BleakError as err:
-            _LOGGER.debug("Error querying %s: %s", self._name, err)
-            self._connected = False
-            return None
-        finally:
-            await self.disconnect()
+                if not success or not keep_connected:
+                    await self.disconnect()
 
     async def async_get_power_status(self) -> bool | None:
         """Query the device power status.
