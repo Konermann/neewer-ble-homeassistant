@@ -565,8 +565,6 @@ class NeewerLightDevice:
         saturation: int | None = None,
     ) -> bool:
         """Turn on the light with optional parameters."""
-        self._is_on = True
-
         if brightness is not None:
             self._brightness = max(0, min(100, brightness))
 
@@ -579,8 +577,12 @@ class NeewerLightDevice:
             if saturation is not None:
                 self._saturation = max(0, min(100, saturation))
 
-            cmd = self._build_hsi_command(self._hue, self._saturation, self._brightness)
-            return await self._send_command(cmd)
+            power_cmd = self._build_power_command(True)
+            hsi_cmd = self._build_hsi_command(self._hue, self._saturation, self._brightness)
+            success = await self._send_commands([power_cmd, hsi_cmd], delay=0.05)
+            if success:
+                self._is_on = True
+            return success
 
         # CCT mode - per NeewerLite-Python:
         # - cct_only lights (old bi-color) use separate 0x82/0x83 commands
@@ -588,48 +590,57 @@ class NeewerLightDevice:
         if self.is_cct_only:
             # Old CCT-only lights need separate brightness and temp commands
             try:
+                power_cmd = self._build_power_command(True)
                 bri_cmd = self._build_brightness_only_command(self._brightness)
                 temp_cmd = self._build_temp_only_command(self._color_temp)
-                return await self._send_commands([bri_cmd, temp_cmd], delay=0.05)
+                success = await self._send_commands(
+                    [power_cmd, bri_cmd, temp_cmd], delay=0.05
+                )
+                if success:
+                    self._is_on = True
+                return success
             except Exception as err:
                 _LOGGER.error("Error in multi-command sequence: %s", err)
                 await self.disconnect()  # Ensure cleanup
                 return False
         else:
             # Standard/Infinity lights use combined CCT command
-            cmd = self._build_cct_command(self._brightness, self._color_temp)
-            return await self._send_command(cmd)
+            power_cmd = self._build_power_command(True)
+            cct_cmd = self._build_cct_command(self._brightness, self._color_temp)
+            success = await self._send_commands([power_cmd, cct_cmd], delay=0.05)
+            if success:
+                self._is_on = True
+            return success
 
     async def turn_off(self) -> bool:
-        """Turn off the light by setting brightness to 0.
-
-        Using brightness=0 instead of power off command because the power
-        command puts some lights into deep sleep with Bluetooth disabled.
-        """
-        self._is_on = False
-
-        if self.is_cct_only:
-            # Old CCT-only lights use separate brightness command
-            cmd = self._build_brightness_only_command(0)
-        else:
-            # Standard/Infinity lights use CCT command with brightness=0
-            cmd = self._build_cct_command(0, self._color_temp)
-
-        return await self._send_command(cmd)
+        """Turn off the light using the device power command."""
+        cmd = self._build_power_command(False)
+        success = await self._send_command(cmd)
+        if success:
+            self._is_on = False
+        return success
 
     async def set_brightness(self, brightness: int) -> bool:
         """Set brightness (0-100)."""
         self._brightness = max(0, min(100, brightness))
-        self._is_on = brightness > 0
+
+        if self._brightness == 0:
+            return await self.turn_off()
 
         if self.is_cct_only:
             # Old CCT-only lights use separate brightness command
+            power_cmd = self._build_power_command(True)
             cmd = self._build_brightness_only_command(self._brightness)
-            return await self._send_command(cmd)
+            success = await self._send_commands([power_cmd, cmd], delay=0.05)
         else:
             # Standard/Infinity lights use combined CCT command
+            power_cmd = self._build_power_command(True)
             cmd = self._build_cct_command(self._brightness, self._color_temp)
-            return await self._send_command(cmd)
+            success = await self._send_commands([power_cmd, cmd], delay=0.05)
+
+        if success:
+            self._is_on = True
+        return success
 
     async def set_color_temp(self, kelvin: int) -> bool:
         """Set color temperature in Kelvin."""
@@ -657,9 +668,12 @@ class NeewerLightDevice:
         if brightness is not None:
             self._brightness = max(0, min(100, brightness))
 
-        self._is_on = True
-        cmd = self._build_hsi_command(self._hue, self._saturation, self._brightness)
-        return await self._send_command(cmd)
+        power_cmd = self._build_power_command(True)
+        hsi_cmd = self._build_hsi_command(self._hue, self._saturation, self._brightness)
+        success = await self._send_commands([power_cmd, hsi_cmd], delay=0.05)
+        if success:
+            self._is_on = True
+        return success
 
     def _notify_callback(self, sender: int, data: bytearray) -> None:
         """Handle notification data from the device.

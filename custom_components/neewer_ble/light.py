@@ -51,7 +51,7 @@ class NeewerBLELight(LightEntity):
 
     _attr_has_entity_name = True
     _attr_name = None  # Use device name
-    _attr_should_poll = False  # No polling - we use brightness=0 for "off" so power status is unreliable
+    _attr_should_poll = True
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the light."""
@@ -156,5 +156,8 @@ class NeewerBLELight(LightEntity):
 
         This polls the device via BLE to get the actual power state.
         """
+        if not self._device.is_connected:
+            return
+
         _LOGGER.debug("Polling state for %s", self._device.name)
         await self._device.async_update()
