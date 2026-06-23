@@ -456,8 +456,7 @@ class NeewerLightDevice:
             brightness: 0-100
             color_temp: 0-100 (internal scale, maps to kelvin range)
         """
-        # Convert 0-100 internal scale to 32-56 protocol temp value
-        temp_protocol = int(32 + (color_temp / 100) * 24)
+        temp_protocol = self._internal_to_protocol_temp(color_temp)
         gm_value = 50  # Neutral green-magenta tint
 
         if self.light_type == 1:
@@ -536,15 +535,22 @@ class NeewerLightDevice:
 
         From NeewerLite-Python:
         - [120, 131, 1, temp] + checksum
-          where temp is 32-56 (for 3200K-5600K)
+          where temp is Kelvin divided by 100
 
         Args:
             color_temp: 0-100 (internal scale, maps to kelvin range)
         """
-        # Convert 0-100 internal scale to 32-56 protocol temp value
-        temp_protocol = int(32 + (color_temp / 100) * 24)
+        temp_protocol = self._internal_to_protocol_temp(color_temp)
         cmd = [0x78, STD_TEMP_CMD, 0x01, temp_protocol]
         return self._add_checksum(cmd)
+
+    def _internal_to_protocol_temp(self, internal: int) -> int:
+        """Convert internal 0-100 color temperature to protocol value."""
+        min_k, max_k = self.color_temp_range
+        internal = max(0, min(100, internal))
+        min_protocol = round(min_k / 100)
+        max_protocol = round(max_k / 100)
+        return round(min_protocol + (internal / 100) * (max_protocol - min_protocol))
 
     def _kelvin_to_internal(self, kelvin: int) -> int:
         """Convert Kelvin to internal 0-100 scale."""
