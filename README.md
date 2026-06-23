@@ -50,7 +50,7 @@ Unknown Neewer BLE lights may still work with model/capability overrides.
 1. Open HACS.
 2. Open **Custom repositories**.
 3. Add the URL of this fork as an **Integration** repository.
-4. Install **Neewer BLE Lights**.
+4. Install **Neewer BLE Lights Extended**.
 5. Restart Home Assistant.
 
 ### Manual
@@ -73,7 +73,7 @@ Open the discovery notification and confirm the device.
 
 1. Go to **Settings** -> **Devices & Services**.
 2. Select **Add Integration**.
-3. Search for **Neewer BLE Lights**.
+3. Search for **Neewer BLE Lights Extended**.
 4. Select a discovered light or enter the Bluetooth address manually.
 
 </details>
