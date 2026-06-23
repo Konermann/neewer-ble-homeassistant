@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_TEMP,
     DOMAIN,
+    LIGHT_TYPE_OPTIONS,
     MODEL_AUTO,
 )
 from .models import (
@@ -41,12 +42,6 @@ from .models import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-LIGHT_TYPE_OPTIONS = {
-    0: "Standard",
-    1: "Infinity",
-    2: "Infinity hybrid",
-}
 
 
 class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):

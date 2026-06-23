@@ -32,6 +32,8 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
+    Platform.NUMBER,
+    Platform.SELECT,
 ]
 
 
@@ -79,7 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         power_off_with_brightness_zero=power_off_with_brightness_zero,
     )
     _LOGGER.info(
-        "Created device handler - Model: %s, RGB: %s, Infinity: %s, Default Bri: %d, Default CT: %dK",
+        "Created device handler - Model: %s, RGB: %s, Infinity: %s, "
+        "Default Bri: %d, Default CT: %dK",
         device.model_name,
         device.supports_rgb,
         device.uses_infinity_protocol,

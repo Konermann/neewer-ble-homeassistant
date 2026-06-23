@@ -27,6 +27,12 @@ CONF_LIGHT_TYPE = "light_type"
 
 MODEL_AUTO = "auto"
 
+LIGHT_TYPE_OPTIONS = {
+    0: "Standard",
+    1: "Infinity",
+    2: "Infinity hybrid",
+}
+
 # Scan timeout
 BLE_SCAN_TIMEOUT = 10
 

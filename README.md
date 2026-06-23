@@ -88,6 +88,8 @@ Once configured, your Neewer light will appear as a light entity in Home Assista
 ## Options
 
 Open the integration's device options from **Settings** -> **Devices & Services**.
+The same settings are also exposed as config entities on the Home Assistant
+device page, so they can be changed from the Home Assistant app.
 
 - **Default brightness** and **default color temperature** are used when the light is turned on without explicit values.
 - **Use brightness 0 instead of the power-off command** sends a zero-brightness command for off actions. This can help with devices or workflows that do not wake reliably from the Neewer power-off state.
