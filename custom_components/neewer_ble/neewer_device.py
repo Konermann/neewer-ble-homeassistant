@@ -319,6 +319,11 @@ class NeewerLightDevice:
 
     async def disconnect(self) -> None:
         """Disconnect from the device."""
+        async with self._command_lock:
+            await self._disconnect()
+
+    async def _disconnect(self) -> None:
+        """Disconnect from the device without acquiring the command lock."""
         async with self._lock:
             client = self._client
             if client is None:
@@ -385,7 +390,7 @@ class NeewerLightDevice:
             finally:
                 # Always disconnect on error, or when explicitly requested.
                 if not success or not keep_connected:
-                    await self.disconnect()
+                    await self._disconnect()
 
     def _build_cct_command(self, brightness: int, color_temp: int) -> list[int]:
         """Build a CCT (brightness + color temperature) command.
@@ -676,7 +681,7 @@ class NeewerLightDevice:
                 return None
             finally:
                 if not success or not keep_connected:
-                    await self.disconnect()
+                    await self._disconnect()
 
     async def async_get_power_status(self) -> bool | None:
         """Query the device power status.
