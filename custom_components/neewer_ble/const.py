@@ -85,4 +85,4 @@ MAX_CONNECTION_RETRIES = 3
 CONNECTION_RETRY_DELAY = 1.0
 
 # Platforms
-PLATFORMS = ["light", "button"]
+PLATFORMS = ["light", "button", "binary_sensor", "sensor"]

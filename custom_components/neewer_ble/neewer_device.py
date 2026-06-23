@@ -6,6 +6,7 @@ import asyncio
 import logging
 import platform
 import subprocess
+from collections.abc import Callable
 from typing import Any
 
 from bleak import BleakClient, BleakScanner
@@ -59,6 +60,7 @@ class NeewerLightDevice:
         self._lock = asyncio.Lock()
         self._command_lock = asyncio.Lock()
         self._disconnect_requested = False
+        self._update_callbacks: set[Callable[[], None]] = set()
 
         # Device info
         self._address = ble_device.address
@@ -181,12 +183,40 @@ class NeewerLightDevice:
         """Return True if connected."""
         return self._client is not None and self._client.is_connected
 
+    @property
+    def rssi(self) -> int | None:
+        """Return the latest known Bluetooth RSSI in dBm."""
+        return getattr(self._ble_device, "rssi", None)
+
+    def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
+        """Add a callback for connection or signal updates."""
+        self._update_callbacks.add(callback)
+
+        def remove_callback() -> None:
+            self._update_callbacks.discard(callback)
+
+        return remove_callback
+
+    def _notify_update_callbacks(self) -> None:
+        """Notify listeners that device state changed."""
+        for callback in list(self._update_callbacks):
+            callback()
+
+    def update_ble_device(self, ble_device: BLEDevice) -> None:
+        """Update the cached BLE device details from Home Assistant."""
+        old_rssi = self.rssi
+        self._ble_device = ble_device
+
+        if self.rssi != old_rssi:
+            self._notify_update_callbacks()
+
     def _handle_disconnect(self, client: BleakClient) -> None:
         """Handle an unexpected BLE disconnect."""
         if self._client is client:
             self._client = None
 
         self._connected = False
+        self._notify_update_callbacks()
 
         if not self._disconnect_requested:
             _LOGGER.warning("Disconnected from %s", self._name)
@@ -292,6 +322,10 @@ class NeewerLightDevice:
                 return True
 
             try:
+                if self._client is not None and not self._client.is_connected:
+                    self._client = None
+                    self._connected = False
+
                 _LOGGER.debug("Connecting to %s", self._address)
 
                 # Use bleak-retry-connector for reliable connection
@@ -304,17 +338,20 @@ class NeewerLightDevice:
                 )
                 self._connected = True
                 _LOGGER.info("Connected to %s", self._name)
+                self._notify_update_callbacks()
                 return True
 
             except BleakError as err:
                 _LOGGER.error("Failed to connect to %s: %s", self._name, err)
                 self._client = None
                 self._connected = False
+                self._notify_update_callbacks()
                 return False
             except Exception as err:
                 _LOGGER.error("Unexpected error connecting to %s: %s", self._name, err)
                 self._client = None
                 self._connected = False
+                self._notify_update_callbacks()
                 return False
 
     async def disconnect(self) -> None:
@@ -322,12 +359,26 @@ class NeewerLightDevice:
         async with self._command_lock:
             await self._disconnect()
 
+    async def reconnect(self) -> bool:
+        """Disconnect and establish a fresh BLE connection."""
+        async with self._command_lock:
+            if self.is_connected:
+                await self._disconnect()
+            return await self.connect()
+
     async def _disconnect(self) -> None:
         """Disconnect from the device without acquiring the command lock."""
         async with self._lock:
             client = self._client
             if client is None:
                 self._connected = False
+                self._notify_update_callbacks()
+                return
+
+            if not client.is_connected:
+                self._client = None
+                self._connected = False
+                self._notify_update_callbacks()
                 return
 
             try:
@@ -343,6 +394,7 @@ class NeewerLightDevice:
                     self._client = None
                 self._connected = False
                 self._disconnect_requested = False
+                self._notify_update_callbacks()
 
     async def _send_command(self, command: list[int], keep_connected: bool = True) -> bool:
         """Send a command to the device.
