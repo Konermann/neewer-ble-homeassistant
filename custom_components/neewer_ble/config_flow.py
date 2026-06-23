@@ -18,16 +18,35 @@ from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
-    DOMAIN,
     BLE_SCAN_TIMEOUT,
+    CONF_CCT_MAX_KELVIN,
+    CONF_CCT_MIN_KELVIN,
+    CONF_CCT_ONLY,
+    CONF_DEFAULT_COLOR_TEMP,
+    CONF_DEFAULT_BRIGHTNESS,
+    CONF_LIGHT_TYPE,
+    CONF_MODEL_OVERRIDE,
+    CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
+    CONF_SUPPORTS_RGB,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_TEMP,
-    CONF_DEFAULT_BRIGHTNESS,
-    CONF_DEFAULT_COLOR_TEMP,
+    DOMAIN,
+    MODEL_AUTO,
 )
-from .models import is_neewer_device
+from .models import (
+    base_model_for_options,
+    is_neewer_device,
+    model_from_options,
+    model_options,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+LIGHT_TYPE_OPTIONS = {
+    0: "Standard",
+    1: "Infinity",
+    2: "Infinity hybrid",
+}
 
 
 class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -207,16 +226,50 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        errors: dict[str, str] = {}
+        device_name = self.config_entry.data.get(CONF_NAME, "")
+        stored_options = dict(self.config_entry.options)
+        options = stored_options
 
-        # Get current values or defaults
-        current_brightness = self.config_entry.options.get(
+        if user_input is not None:
+            options = self._normalize_user_options(
+                device_name,
+                dict(user_input),
+                stored_options,
+            )
+            model_info = model_from_options(device_name, options)
+            min_kelvin, max_kelvin = model_info.cct_range
+            default_color_temp = options.get(
+                CONF_DEFAULT_COLOR_TEMP,
+                DEFAULT_COLOR_TEMP,
+            )
+
+            if min_kelvin >= max_kelvin:
+                errors["base"] = "invalid_cct_range"
+            elif not min_kelvin <= default_color_temp <= max_kelvin:
+                errors["base"] = "default_color_temp_out_of_range"
+            else:
+                return self.async_create_entry(title="", data=options)
+
+        available_models = model_options()
+        model_code = options.get(CONF_MODEL_OVERRIDE, MODEL_AUTO)
+        if model_code not in available_models:
+            model_code = MODEL_AUTO
+
+        base_model = base_model_for_options(device_name, options)
+        base_min_kelvin, base_max_kelvin = base_model.cct_range
+
+        current_brightness = options.get(
             CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS
         )
-        current_color_temp = self.config_entry.options.get(
+        current_color_temp = options.get(
             CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP
         )
+        current_min_kelvin = options.get(CONF_CCT_MIN_KELVIN, base_min_kelvin)
+        current_max_kelvin = options.get(CONF_CCT_MAX_KELVIN, base_max_kelvin)
+        current_light_type = options.get(CONF_LIGHT_TYPE, base_model.light_type)
+        if current_light_type not in LIGHT_TYPE_OPTIONS:
+            current_light_type = base_model.light_type
 
         return self.async_show_form(
             step_id="init",
@@ -229,7 +282,59 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_DEFAULT_COLOR_TEMP,
                         default=current_color_temp,
-                    ): vol.All(vol.Coerce(int), vol.Range(min=2700, max=10000)),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1000, max=10000)),
+                    vol.Optional(
+                        CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
+                        default=options.get(CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_MODEL_OVERRIDE,
+                        default=model_code,
+                    ): vol.In(available_models),
+                    vol.Optional(
+                        CONF_CCT_MIN_KELVIN,
+                        default=current_min_kelvin,
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1000, max=10000)),
+                    vol.Optional(
+                        CONF_CCT_MAX_KELVIN,
+                        default=current_max_kelvin,
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1000, max=10000)),
+                    vol.Optional(
+                        CONF_SUPPORTS_RGB,
+                        default=options.get(CONF_SUPPORTS_RGB, base_model.rgb),
+                    ): bool,
+                    vol.Optional(
+                        CONF_CCT_ONLY,
+                        default=options.get(CONF_CCT_ONLY, base_model.cct_only),
+                    ): bool,
+                    vol.Optional(
+                        CONF_LIGHT_TYPE,
+                        default=current_light_type,
+                    ): vol.In(LIGHT_TYPE_OPTIONS),
                 }
             ),
+            errors=errors,
         )
+
+    def _normalize_user_options(
+        self,
+        device_name: str,
+        user_input: dict[str, Any],
+        stored_options: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Avoid saving unchanged detected model defaults as explicit overrides."""
+        previous_base_model = base_model_for_options(device_name, stored_options)
+        previous_min_kelvin, previous_max_kelvin = previous_base_model.cct_range
+        previous_defaults = {
+            CONF_CCT_MIN_KELVIN: previous_min_kelvin,
+            CONF_CCT_MAX_KELVIN: previous_max_kelvin,
+            CONF_SUPPORTS_RGB: previous_base_model.rgb,
+            CONF_CCT_ONLY: previous_base_model.cct_only,
+            CONF_LIGHT_TYPE: previous_base_model.light_type,
+        }
+
+        for key, previous_value in previous_defaults.items():
+            if key not in stored_options and user_input.get(key) == previous_value:
+                user_input.pop(key, None)
+
+        return user_input

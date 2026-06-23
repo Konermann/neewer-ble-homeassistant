@@ -37,12 +37,23 @@
     "step": {
       "init": {
         "title": "Neewer Light Options",
-        "description": "Configure default values for this light.",
+        "description": "Configure defaults, model detection, and protocol overrides. The integration reloads this device after saving.",
         "data": {
           "default_brightness": "Default Brightness (1-100%)",
-          "default_color_temp": "Default Color Temperature (Kelvin)"
+          "default_color_temp": "Default Color Temperature (Kelvin)",
+          "power_off_with_brightness_zero": "Use brightness 0 instead of the power-off command",
+          "model_override": "Model override",
+          "cct_min_kelvin": "Lowest color temperature (Kelvin)",
+          "cct_max_kelvin": "Highest color temperature (Kelvin)",
+          "supports_rgb": "Supports RGB / HS color",
+          "cct_only": "Use separate CCT brightness and temperature commands",
+          "light_type": "Protocol type"
         }
       }
+    },
+    "error": {
+      "invalid_cct_range": "The lowest color temperature must be lower than the highest color temperature.",
+      "default_color_temp_out_of_range": "The default color temperature must be within the configured range."
     }
   }
 }

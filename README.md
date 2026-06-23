@@ -29,6 +29,11 @@ This integration supports Neewer lights that use Bluetooth for control, includin
 - **RGB color control** (for supported models)
 - **Auto-discovery** via Home Assistant's Bluetooth integration
 - **Manual device entry** for devices not auto-discovered
+- **Persistent BLE connection** after Home Assistant starts the integration
+- **Connection controls** with a connect/disconnect switch and reconnect button
+- **Connection diagnostics** including connected state, RSSI, and a diagnostic dump button
+- **Model and protocol overrides** for lights that advertise unusual names or need custom limits
+- **Configurable off behavior** using either the Neewer power-off command or brightness 0
 
 ## Requirements
 
@@ -76,6 +81,19 @@ Once configured, your Neewer light will appear as a light entity in Home Assista
 - Adjust brightness
 - Change color temperature (in Kelvin)
 - Set RGB colors (if supported by your model)
+- Connect or disconnect Home Assistant's BLE session with the connection switch
+- Press the reconnect button to refresh a stale BLE session
+- Press the diagnostic dump button to create a JSON diagnostic notification and log entry
+
+## Options
+
+Open the integration's device options from **Settings** -> **Devices & Services**.
+
+- **Default brightness** and **default color temperature** are used when the light is turned on without explicit values.
+- **Use brightness 0 instead of the power-off command** sends a zero-brightness command for off actions. This can help with devices or workflows that do not wake reliably from the Neewer power-off state.
+- **Model override** lets you force a known model profile instead of relying on the advertised BLE name.
+- **Lowest/highest color temperature** override the model's Kelvin limits. For example, MS150B lights can be set to 2700K-6500K.
+- **Supports RGB / HS color**, **separate CCT commands**, and **protocol type** override the model's detected capabilities.
 
 ### Example Automations
 
@@ -123,22 +141,31 @@ script:
 Bluetooth connections can be finicky. Try:
 - Restarting the light
 - Restarting Home Assistant
+- Turning off the integration's **Connection** switch so another Bluetooth app can connect
+- Pressing the **Reconnect** button if Home Assistant shows a connection but the light stops responding
 - Using an ESPHome Bluetooth Proxy for better range/reliability
 
 ### Light Not Responding
 
 Some Neewer lights use different BLE protocols. If your light isn't responding:
-1. Open an issue with your light model
-2. Include the Bluetooth device name (visible in the Neewer app or via a BLE scanner)
+1. Open the integration options and check the model, color temperature range, and protocol type.
+2. Press the **Diagnostic Dump** button and copy the JSON from the Home Assistant notification or logs.
+3. Open an issue with your light model, BLE device name, and diagnostic dump.
 
 ## Contributing
 
 Contributions are welcome! If you have a Neewer light that isn't working:
 
 1. Fork this repository
-2. Add your light's model info to `const.py`
+2. Add your light's model info to `custom_components/neewer_ble/models.py`
 3. Test the integration
 4. Submit a pull request
+
+Run the lightweight unit tests with:
+
+```bash
+python3 -m unittest discover -s tests
+```
 
 ## Protocol Information
 

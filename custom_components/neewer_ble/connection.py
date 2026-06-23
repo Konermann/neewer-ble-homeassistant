@@ -34,6 +34,9 @@ class NeewerBLEConnection:
         self._update_callbacks: set[Callable[[], None]] = set()
         self._notify_data: bytes | None = None
         self._notify_event = asyncio.Event()
+        self._last_operation: str | None = None
+        self._last_commands: list[list[int]] = []
+        self._last_error: str | None = None
 
     @property
     def address(self) -> str:
@@ -80,10 +83,12 @@ class NeewerBLEConnection:
     async def connect(self) -> bool:
         """Connect to the device using bleak-retry-connector."""
         if self.is_connected:
+            self._last_error = None
             return True
 
         async with self._lock:
             if self.is_connected:
+                self._last_error = None
                 return True
 
             try:
@@ -91,6 +96,8 @@ class NeewerBLEConnection:
                     self._client = None
 
                 _LOGGER.debug("Connecting to %s", self.address)
+                self._last_operation = "connect"
+                self._last_error = None
                 self._client = await establish_connection(
                     BleakClientWithServiceCache,
                     self._ble_device,
@@ -103,8 +110,10 @@ class NeewerBLEConnection:
                 return True
             except BleakError as err:
                 _LOGGER.error("Failed to connect to %s: %s", self._name, err)
+                self._last_error = str(err)
             except Exception as err:
                 _LOGGER.error("Unexpected error connecting to %s: %s", self._name, err)
+                self._last_error = str(err)
 
             self._client = None
             self.notify_update_callbacks()
@@ -134,6 +143,9 @@ class NeewerBLEConnection:
                 return False
 
             success = False
+            self._last_operation = "write"
+            self._last_commands = [list(command) for command in commands]
+            self._last_error = None
             try:
                 for index, command in enumerate(commands):
                     _LOGGER.debug(
@@ -154,6 +166,7 @@ class NeewerBLEConnection:
                 return True
             except BleakError as err:
                 _LOGGER.error("Failed to send command: %s", err)
+                self._last_error = str(err)
                 return False
             finally:
                 if not success or not keep_connected:
@@ -171,6 +184,9 @@ class NeewerBLEConnection:
                 return None
 
             success = False
+            self._last_operation = "query"
+            self._last_commands = [list(command)]
+            self._last_error = None
             try:
                 self._notify_data = None
                 self._notify_event.clear()
@@ -193,6 +209,7 @@ class NeewerBLEConnection:
                     return self._notify_data
                 except asyncio.TimeoutError:
                     _LOGGER.debug("Timeout waiting for response from %s", self._name)
+                    self._last_error = "timeout"
                     success = True
                     return None
                 finally:
@@ -202,6 +219,7 @@ class NeewerBLEConnection:
                         pass
             except BleakError as err:
                 _LOGGER.debug("Error querying %s: %s", self._name, err)
+                self._last_error = str(err)
                 return None
             finally:
                 if not success or not keep_connected:
@@ -210,6 +228,8 @@ class NeewerBLEConnection:
     async def _disconnect(self) -> None:
         """Disconnect without acquiring the command lock."""
         async with self._lock:
+            self._last_operation = "disconnect"
+            self._last_error = None
             client = self._client
             if client is None:
                 self.notify_update_callbacks()
@@ -225,8 +245,10 @@ class NeewerBLEConnection:
                 await asyncio.wait_for(client.disconnect(), timeout=5.0)
             except asyncio.TimeoutError:
                 _LOGGER.warning("Timeout disconnecting from %s, forcing cleanup", self._name)
+                self._last_error = "disconnect timeout"
             except Exception as err:
                 _LOGGER.debug("Error disconnecting from %s: %s", self._name, err)
+                self._last_error = str(err)
             finally:
                 if self._client is client:
                     self._client = None
@@ -238,6 +260,9 @@ class NeewerBLEConnection:
         if self._client is client:
             self._client = None
 
+        self._last_operation = (
+            "disconnect" if self._disconnect_requested else "unexpected_disconnect"
+        )
         self.notify_update_callbacks()
 
         if not self._disconnect_requested:
@@ -248,3 +273,14 @@ class NeewerBLEConnection:
         _LOGGER.debug("Notification from %s: %s", self._name, [hex(b) for b in data])
         self._notify_data = bytes(data)
         self._notify_event.set()
+
+    def diagnostic_dump(self) -> dict:
+        """Return diagnostic details for the BLE connection."""
+        return {
+            "address": self.address,
+            "connected": self.is_connected,
+            "rssi": self.rssi,
+            "last_operation": self._last_operation,
+            "last_commands": self._last_commands,
+            "last_error": self._last_error,
+        }

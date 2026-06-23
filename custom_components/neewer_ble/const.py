@@ -17,6 +17,15 @@ DEFAULT_COLOR_TEMP = 3200
 # Options flow config keys
 CONF_DEFAULT_BRIGHTNESS = "default_brightness"
 CONF_DEFAULT_COLOR_TEMP = "default_color_temp"
+CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO = "power_off_with_brightness_zero"
+CONF_MODEL_OVERRIDE = "model_override"
+CONF_CCT_MIN_KELVIN = "cct_min_kelvin"
+CONF_CCT_MAX_KELVIN = "cct_max_kelvin"
+CONF_SUPPORTS_RGB = "supports_rgb"
+CONF_CCT_ONLY = "cct_only"
+CONF_LIGHT_TYPE = "light_type"
+
+MODEL_AUTO = "auto"
 
 # Scan timeout
 BLE_SCAN_TIMEOUT = 10

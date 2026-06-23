@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from typing import Any
 
@@ -21,6 +22,8 @@ from .device import NeewerLightDevice
 from .entity import NeewerEntityMixin
 
 _LOGGER = logging.getLogger(__name__)
+
+SCAN_INTERVAL = timedelta(seconds=10)
 
 
 async def async_setup_entry(
@@ -54,7 +57,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the light."""
         self._setup_neewer_entity(device, entry)
-        
+
         # Determine supported color modes
         if device.supports_rgb:
             self._attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS}
@@ -62,12 +65,12 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         else:
             self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
             self._attr_color_mode = ColorMode.COLOR_TEMP
-        
+
         # Color temperature range
         min_kelvin, max_kelvin = device.color_temp_range
         self._attr_min_color_temp_kelvin = min_kelvin
         self._attr_max_color_temp_kelvin = max_kelvin
-        
+
     @property
     def is_on(self) -> bool:
         """Return true if light is on."""
@@ -88,7 +91,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
     def hs_color(self) -> tuple[float, float] | None:
         """Return the hue and saturation color value."""
         if self._device.supports_rgb:
-            return (self._device._hue, self._device._saturation)
+            return (self._device.hue, self._device.saturation)
         return None
 
     @property
@@ -102,14 +105,18 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the light."""
+        has_brightness = ATTR_BRIGHTNESS in kwargs
+        has_color_temp = ATTR_COLOR_TEMP_KELVIN in kwargs
+        has_hs = ATTR_HS_COLOR in kwargs
+
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         color_temp_kelvin = kwargs.get(ATTR_COLOR_TEMP_KELVIN)
         hs_color = kwargs.get(ATTR_HS_COLOR)
-        
+
         # Convert HA brightness (0-255) to Neewer (0-100)
         brightness_pct = int(brightness / 2.55) if brightness is not None else None
-        
-        if hs_color is not None and self._device.supports_rgb:
+
+        if has_hs and hs_color is not None and self._device.supports_rgb:
             # RGB mode
             hue, saturation = hs_color
             await self._device.set_rgb(
@@ -118,14 +125,35 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
                 brightness=brightness_pct,
             )
             self._attr_color_mode = ColorMode.HS
-        else:
-            # CCT mode
+        elif has_color_temp:
+            # Explicit color temperature request switches to CCT mode.
             await self._device.turn_on(
                 brightness=brightness_pct,
                 color_temp_kelvin=color_temp_kelvin,
             )
             self._attr_color_mode = ColorMode.COLOR_TEMP
-        
+        elif has_brightness:
+            # Brightness alone should not switch the current color mode.
+            if brightness_pct == 0:
+                await self._device.set_brightness(0)
+            elif self._attr_color_mode == ColorMode.HS and self._device.supports_rgb:
+                await self._device.set_rgb(
+                    hue=self._device.hue,
+                    saturation=self._device.saturation,
+                    brightness=brightness_pct,
+                )
+            elif brightness_pct is not None:
+                await self._device.set_brightness(brightness_pct)
+        elif self._attr_color_mode == ColorMode.HS and self._device.supports_rgb:
+            await self._device.set_rgb(
+                hue=self._device.hue,
+                saturation=self._device.saturation,
+            )
+        else:
+            # CCT mode
+            await self._device.turn_on()
+            self._attr_color_mode = ColorMode.COLOR_TEMP
+
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:

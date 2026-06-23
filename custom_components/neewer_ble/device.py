@@ -29,6 +29,7 @@ class NeewerLightDevice:
         model_info: ModelInfo | dict[str, Any] | None = None,
         default_brightness: int = 100,
         default_color_temp: int = 3200,
+        power_off_with_brightness_zero: bool = False,
     ) -> None:
         """Initialize the Neewer light device."""
         self._connection = NeewerBLEConnection(
@@ -43,6 +44,7 @@ class NeewerLightDevice:
         self._hw_mac_address: str | None = None
         self._default_brightness = default_brightness
         self._default_color_temp = default_color_temp
+        self._power_off_with_brightness_zero = power_off_with_brightness_zero
 
         self._is_on = False
         self._brightness = default_brightness
@@ -100,6 +102,16 @@ class NeewerLightDevice:
     def brightness(self) -> int:
         """Return brightness (0-100)."""
         return self._brightness
+
+    @property
+    def hue(self) -> int:
+        """Return the cached hue."""
+        return self._hue
+
+    @property
+    def saturation(self) -> int:
+        """Return the cached saturation."""
+        return self._saturation
 
     @property
     def color_temp_kelvin(self) -> int:
@@ -195,8 +207,16 @@ class NeewerLightDevice:
         return success
 
     async def turn_off(self) -> bool:
-        """Turn off the light using the device power command."""
-        success = await self._write_command(self._protocol.build_power_command(False))
+        """Turn off the light using the configured off behavior."""
+        if self._power_off_with_brightness_zero:
+            if self.is_cct_only:
+                command = self._protocol.build_brightness_only_command(0)
+            else:
+                command = self._protocol.build_cct_command(0, self._color_temp)
+        else:
+            command = self._protocol.build_power_command(False)
+
+        success = await self._write_command(command)
         self._set_on_if_success(success, False)
         return success
 
@@ -337,6 +357,37 @@ class NeewerLightDevice:
             brightness,
             color_temp_kelvin,
         )
+
+    def diagnostic_dump(self) -> dict[str, Any]:
+        """Return diagnostic details for troubleshooting."""
+        return {
+            "name": self.name,
+            "address": self.address,
+            "model": {
+                "name": self.model_name,
+                "supports_rgb": self.supports_rgb,
+                "cct_range": list(self.color_temp_range),
+                "cct_only": self.is_cct_only,
+                "light_type": self.light_type,
+                "uses_infinity_protocol": self.uses_infinity_protocol,
+            },
+            "state": {
+                "is_on": self.is_on,
+                "brightness": self.brightness,
+                "color_temp_kelvin": self.color_temp_kelvin,
+                "hue": self.hue,
+                "saturation": self.saturation,
+                "last_poll_success": self.last_poll_success,
+            },
+            "defaults": {
+                "brightness": self._default_brightness,
+                "color_temp_kelvin": self._default_color_temp,
+            },
+            "options": {
+                "power_off_with_brightness_zero": self._power_off_with_brightness_zero,
+            },
+            "connection": self._connection.diagnostic_dump(),
+        }
 
     async def _write_command(self, command: list[int], keep_connected: bool = True) -> bool:
         """Write a single command."""

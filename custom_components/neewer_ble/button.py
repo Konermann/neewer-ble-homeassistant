@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -25,7 +27,12 @@ async def async_setup_entry(
     """Set up Neewer BLE buttons from a config entry."""
     device: NeewerLightDevice = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities([NeewerReconnectButton(device, entry)])
+    async_add_entities(
+        [
+            NeewerReconnectButton(device, entry),
+            NeewerDiagnosticDumpButton(device, entry),
+        ]
+    )
 
 
 class NeewerReconnectButton(NeewerEntityMixin, ButtonEntity):
@@ -48,3 +55,36 @@ class NeewerReconnectButton(NeewerEntityMixin, ButtonEntity):
             await self._device.reconnect()
         else:
             await self._device.connect()
+
+
+class NeewerDiagnosticDumpButton(NeewerEntityMixin, ButtonEntity):
+    """Button that creates a diagnostic dump for troubleshooting."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Diagnostic Dump"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clipboard-text-search"
+
+    def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
+        """Initialize the button."""
+        self._setup_neewer_entity(device, entry, "diagnostic_dump")
+
+    async def async_press(self) -> None:
+        """Create a diagnostic dump notification."""
+        dump = self._device.diagnostic_dump()
+        dump_text = json.dumps(dump, indent=2, sort_keys=True)
+
+        _LOGGER.info(
+            "Neewer diagnostic dump for %s:\n%s",
+            self._device.name,
+            dump_text,
+        )
+        persistent_notification.async_create(
+            self.hass,
+            f"```json\n{dump_text}\n```",
+            title=f"Neewer BLE diagnostics: {self._device.name}",
+            notification_id=(
+                "neewer_ble_diagnostics_"
+                f"{self._device.address.replace(':', '_').lower()}"
+            ),
+        )

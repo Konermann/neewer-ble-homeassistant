@@ -6,6 +6,16 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from .const import (
+    CONF_CCT_MAX_KELVIN,
+    CONF_CCT_MIN_KELVIN,
+    CONF_CCT_ONLY,
+    CONF_LIGHT_TYPE,
+    CONF_MODEL_OVERRIDE,
+    CONF_SUPPORTS_RGB,
+    MODEL_AUTO,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -109,3 +119,41 @@ def detect_model(name: str) -> ModelInfo:
 
     _LOGGER.debug("Unknown model, using defaults for: %s", name)
     return UNKNOWN_MODEL
+
+
+def model_options() -> dict[str, str]:
+    """Return model choices for the options flow."""
+    options = {MODEL_AUTO: "Auto detect"}
+    options.update(
+        {
+            code: f"{info.name} ({code})"
+            for code, info in sorted(SUPPORTED_MODELS.items(), key=lambda item: item[1].name)
+        }
+    )
+    return options
+
+
+def base_model_for_options(name: str, options: dict[str, Any]) -> ModelInfo:
+    """Return the selected or detected base model before parameter overrides."""
+    model_code = options.get(CONF_MODEL_OVERRIDE, MODEL_AUTO)
+    if model_code != MODEL_AUTO and model_code in SUPPORTED_MODELS:
+        return SUPPORTED_MODELS[model_code]
+
+    return detect_model(name)
+
+
+def model_from_options(name: str, options: dict[str, Any]) -> ModelInfo:
+    """Return model info after applying config-entry overrides."""
+    base_model = base_model_for_options(name, options)
+    min_k, max_k = base_model.cct_range
+
+    return ModelInfo(
+        name=base_model.name,
+        rgb=options.get(CONF_SUPPORTS_RGB, base_model.rgb),
+        cct_range=(
+            options.get(CONF_CCT_MIN_KELVIN, min_k),
+            options.get(CONF_CCT_MAX_KELVIN, max_k),
+        ),
+        cct_only=options.get(CONF_CCT_ONLY, base_model.cct_only),
+        light_type=options.get(CONF_LIGHT_TYPE, base_model.light_type),
+    )

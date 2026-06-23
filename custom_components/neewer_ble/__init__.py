@@ -19,8 +19,10 @@ from .const import (
     DEFAULT_COLOR_TEMP,
     CONF_DEFAULT_BRIGHTNESS,
     CONF_DEFAULT_COLOR_TEMP,
+    CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
 )
 from .device import NeewerLightDevice
+from .models import model_from_options
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,12 +65,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Get options with defaults
     default_brightness = entry.options.get(CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS)
     default_color_temp = entry.options.get(CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP)
+    model_info = model_from_options(name, entry.options)
+    power_off_with_brightness_zero = entry.options.get(
+        CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO, False
+    )
 
     # Create the device handler
     device = NeewerLightDevice(
         ble_device,
+        model_info=model_info,
         default_brightness=default_brightness,
         default_color_temp=default_color_temp,
+        power_off_with_brightness_zero=power_off_with_brightness_zero,
     )
     _LOGGER.info(
         "Created device handler - Model: %s, RGB: %s, Infinity: %s, Default Bri: %d, Default CT: %dK",
@@ -102,18 +110,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options update."""
-    device: NeewerLightDevice = hass.data[DOMAIN][entry.entry_id]
-
-    default_brightness = entry.options.get(CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS)
-    default_color_temp = entry.options.get(CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP)
-
-    device.set_defaults(default_brightness, default_color_temp)
-    _LOGGER.info(
-        "Updated defaults for %s - Brightness: %d, Color Temp: %dK",
-        device.name,
-        default_brightness,
-        default_color_temp,
-    )
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
