@@ -42,6 +42,73 @@ class NumberDescription:
     default_value: int
 
 
+@dataclass(frozen=True)
+class RuntimeNumberDescription:
+    """Description for a live device numeric control."""
+
+    key: str
+    name: str
+    unique_suffix: str
+    icon: str
+    native_min_value: int
+    native_max_value: int
+    native_step: int
+    native_unit_of_measurement: str | None
+    mode: NumberMode = NumberMode.SLIDER
+
+
+CCT_COLOR_TEMP = "cct_color_temp"
+CCT_GREEN_MAGENTA = "cct_green_magenta"
+FX_SPEED = "fx_speed"
+FX_STRENGTH = "fx_strength"
+
+CCT_NUMBER_DESCRIPTIONS = (
+    RuntimeNumberDescription(
+        key=CCT_COLOR_TEMP,
+        name="CCT Color Temperature",
+        unique_suffix="cct_color_temperature",
+        icon="mdi:thermometer",
+        native_min_value=1000,
+        native_max_value=10000,
+        native_step=1,
+        native_unit_of_measurement="K",
+    ),
+    RuntimeNumberDescription(
+        key=CCT_GREEN_MAGENTA,
+        name="CCT Green/Magenta",
+        unique_suffix="cct_green_magenta",
+        icon="mdi:tune-variant",
+        native_min_value=-50,
+        native_max_value=50,
+        native_step=1,
+        native_unit_of_measurement=None,
+    ),
+)
+
+FX_NUMBER_DESCRIPTIONS = (
+    RuntimeNumberDescription(
+        key=FX_SPEED,
+        name="FX Speed",
+        unique_suffix="fx_speed",
+        icon="mdi:speedometer",
+        native_min_value=1,
+        native_max_value=10,
+        native_step=1,
+        native_unit_of_measurement=None,
+    ),
+    RuntimeNumberDescription(
+        key=FX_STRENGTH,
+        name="FX Strength",
+        unique_suffix="fx_strength",
+        icon="mdi:waveform",
+        native_min_value=0,
+        native_max_value=10,
+        native_step=1,
+        native_unit_of_measurement=None,
+    ),
+)
+
+
 NUMBER_DESCRIPTIONS = (
     NumberDescription(
         key=CONF_DEFAULT_BRIGHTNESS,
@@ -97,13 +164,93 @@ async def async_setup_entry(
 ) -> None:
     """Set up Neewer BLE number entities from a config entry."""
     device: NeewerLightDevice = hass.data[DOMAIN][entry.entry_id]
+    runtime_descriptions = [CCT_NUMBER_DESCRIPTIONS[0]]
+    if device.supports_green_magenta:
+        runtime_descriptions.append(CCT_NUMBER_DESCRIPTIONS[1])
+    if device.supports_effect_tuning:
+        runtime_descriptions.extend(FX_NUMBER_DESCRIPTIONS)
 
     async_add_entities(
         [
+            NeewerRuntimeNumber(device, entry, description)
+            for description in runtime_descriptions
+        ]
+        + [
             NeewerOptionNumber(device, entry, description)
             for description in NUMBER_DESCRIPTIONS
         ]
     )
+
+
+class NeewerRuntimeNumber(NeewerEntityMixin, NumberEntity):
+    """Number entity that controls live lamp settings."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        device: NeewerLightDevice,
+        entry: ConfigEntry,
+        description: RuntimeNumberDescription,
+    ) -> None:
+        """Initialize the number entity."""
+        self._description = description
+        self._attr_name = description.name
+        self._attr_icon = description.icon
+        self._attr_mode = description.mode
+        self._attr_native_step = description.native_step
+        self._attr_native_unit_of_measurement = description.native_unit_of_measurement
+        self._setup_neewer_entity(device, entry, description.unique_suffix)
+
+    @property
+    def native_value(self) -> int:
+        """Return the current live device value."""
+        if self._description.key == CCT_COLOR_TEMP:
+            return self._device.color_temp_kelvin
+        if self._description.key == CCT_GREEN_MAGENTA:
+            return self._device.green_magenta
+        if self._description.key == FX_SPEED:
+            return self._device.effect_speed
+        if self._description.key == FX_STRENGTH:
+            return self._device.effect_strength
+
+        return 0
+
+    @property
+    def native_min_value(self) -> int:
+        """Return the minimum allowed value."""
+        if self._description.key == CCT_COLOR_TEMP:
+            return self._device.color_temp_range[0]
+
+        return self._description.native_min_value
+
+    @property
+    def native_max_value(self) -> int:
+        """Return the maximum allowed value."""
+        if self._description.key == CCT_COLOR_TEMP:
+            return self._device.color_temp_range[1]
+
+        return self._description.native_max_value
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update the live device value."""
+        new_value = int(value)
+
+        if self._description.key == CCT_COLOR_TEMP:
+            success = await self._device.set_color_temp(new_value)
+        elif self._description.key == CCT_GREEN_MAGENTA:
+            success = await self._device.set_green_magenta(new_value)
+        elif self._description.key == FX_SPEED:
+            success = await self._device.set_effect_speed(new_value)
+        elif self._description.key == FX_STRENGTH:
+            success = await self._device.set_effect_strength(new_value)
+        else:
+            return
+
+        if not success:
+            raise HomeAssistantError(f"Failed to update {self._attr_name}")
+
+        self._device.notify_update_callbacks()
 
 
 class NeewerOptionNumber(NeewerEntityMixin, NumberEntity):

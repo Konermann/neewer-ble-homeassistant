@@ -57,16 +57,22 @@ class NeewerProtocol:
         """Return true if this model uses the full Infinity protocol."""
         return self.light_type == 1
 
-    def build_cct_command(self, brightness: int, color_temp: int) -> list[int]:
+    def build_cct_command(
+        self,
+        brightness: int,
+        color_temp: int,
+        green_magenta: int = 0,
+    ) -> list[int]:
         """Build a CCT command."""
         temp_protocol = self.internal_to_protocol_temp(color_temp)
+        gm_protocol = green_magenta_to_protocol(green_magenta)
 
         if self.light_type == 1:
             cmd = [0x78, INF_CCT_CMD, 0x0B]
             cmd.extend(self._mac_bytes_provider())
-            cmd.extend([STD_CCT_CMD, brightness, temp_protocol, GM_NEUTRAL, 0x04])
+            cmd.extend([STD_CCT_CMD, brightness, temp_protocol, gm_protocol, 0x04])
         elif self.light_type == 2:
-            cmd = [0x78, STD_CCT_CMD, 0x03, brightness, temp_protocol, GM_NEUTRAL]
+            cmd = [0x78, STD_CCT_CMD, 0x03, brightness, temp_protocol, gm_protocol]
         else:
             cmd = [0x78, STD_CCT_CMD, 0x02, brightness, temp_protocol]
 
@@ -104,6 +110,9 @@ class NeewerProtocol:
         color_temp: int,
         hue: int,
         saturation: int,
+        green_magenta: int = 0,
+        speed: int = DEFAULT_SCENE_SPEED,
+        strength: int = DEFAULT_SCENE_SPECIAL,
     ) -> list[list[int]]:
         """Build scene/FX command sequence."""
         if self.light_type == 0:
@@ -115,6 +124,9 @@ class NeewerProtocol:
             color_temp,
             hue,
             saturation,
+            green_magenta,
+            speed,
+            strength,
         )
 
         if self.light_type == 2:
@@ -197,11 +209,14 @@ class NeewerProtocol:
             }
 
         if mode == STD_CCT_CMD and len(command) >= 5:
-            return {
+            state = {
                 "mode": "cct",
                 "brightness": command[3],
                 "color_temp": self.protocol_temp_to_internal(command[4]),
             }
+            if len(command) > 5:
+                state["green_magenta"] = command[5] - GM_NEUTRAL
+            return state
 
         if mode in (STD_SCENE_CMD, INF_SCENE_PAYLOAD_CMD) and len(command) >= 5:
             return self._parse_effect_state(command)
@@ -234,35 +249,40 @@ class NeewerProtocol:
         color_temp: int,
         hue: int,
         saturation: int,
+        green_magenta: int,
+        speed: int,
+        strength: int,
     ) -> list[int]:
         """Build the model-independent extended scene payload."""
         brightness = max(0, min(100, brightness))
-        bright_min = 0
+        speed = max(1, min(10, speed))
+        strength = max(0, min(10, strength))
+        bright_min = max(0, brightness - (strength * 10))
         bright_max = max(1, brightness)
         temp = self.internal_to_protocol_temp(color_temp)
         temp_min, temp_max = self._protocol_temp_range()
         hue_low, hue_high = _split_hue(hue)
         saturation = max(0, min(100, saturation))
-        speed = DEFAULT_SCENE_SPEED
-        sparks = 0
-        special = DEFAULT_SCENE_SPECIAL
+        gm_protocol = green_magenta_to_protocol(green_magenta)
+        sparks = strength
+        special = strength
 
         payload = [effect_id]
         if effect_id == 1:
             payload.extend([brightness, temp, speed])
         elif effect_id in (2, 3, 6, 8):
-            payload.extend([brightness, temp, GM_NEUTRAL, speed])
+            payload.extend([brightness, temp, gm_protocol, speed])
         elif effect_id == 4:
-            payload.extend([brightness, temp, GM_NEUTRAL, speed, sparks])
+            payload.extend([brightness, temp, gm_protocol, speed, sparks])
         elif effect_id == 5:
-            payload.extend([bright_min, bright_max, temp, GM_NEUTRAL, speed])
+            payload.extend([bright_min, bright_max, temp, gm_protocol, speed])
         elif effect_id in (7, 9):
             payload.extend([brightness, hue_low, hue_high, saturation, speed])
         elif effect_id == 10:
             payload.extend([brightness, special, speed])
         elif effect_id == 11:
             payload.extend(
-                [bright_min, bright_max, temp, GM_NEUTRAL, speed, sparks]
+                [bright_min, bright_max, temp, gm_protocol, speed, sparks]
             )
         elif effect_id == 12:
             payload.extend([brightness, 0, 0, 104, 1, speed])
@@ -273,7 +293,7 @@ class NeewerProtocol:
         elif effect_id == 15:
             payload = [14, 1, bright_min, bright_max, hue_low, hue_high, 0, speed]
         elif effect_id == 16:
-            payload = [15, bright_min, bright_max, temp, GM_NEUTRAL, speed]
+            payload = [15, bright_min, bright_max, temp, gm_protocol, speed]
         elif effect_id == 17:
             payload = [16, brightness, special, speed, sparks]
         elif effect_id == 18:
@@ -347,23 +367,48 @@ class NeewerProtocol:
 
         if effect_id in (1, 2, 3, 4, 6, 8) and len(command) > 5:
             state["color_temp"] = self.protocol_temp_to_internal(command[5])
+            if len(command) > 6 and effect_id != 1:
+                state["green_magenta"] = command[6] - GM_NEUTRAL
+            if len(command) > 7:
+                state["effect_speed"] = command[7]
+            elif len(command) > 6:
+                state["effect_speed"] = command[6]
+            if len(command) > 8:
+                state["effect_strength"] = command[8]
         elif effect_id in (5, 11, 16) and len(command) > 6:
             state["brightness"] = command[5]
             state["color_temp"] = self.protocol_temp_to_internal(command[6])
+            if len(command) > 7:
+                state["green_magenta"] = command[7] - GM_NEUTRAL
+            if len(command) > 8:
+                state["effect_speed"] = command[8]
+            if len(command) > 9:
+                state["effect_strength"] = command[9]
         elif effect_id in (7, 9) and len(command) > 7:
             state["hue"] = command[5] + (256 * command[6])
             state["saturation"] = command[7]
+            if len(command) > 8:
+                state["effect_speed"] = command[8]
+        elif effect_id in (10, 17, 18) and len(command) > 6:
+            state["effect_strength"] = command[5]
+            state["effect_speed"] = command[6]
         elif effect_id == 13 and len(command) > 5:
             state["color_temp"] = self.protocol_temp_to_internal(command[5])
+            if len(command) > 7:
+                state["effect_speed"] = command[7]
         elif effect_id == 14 and len(command) > 9:
             state["brightness"] = command[6]
             if command[4] == 0:
                 state["color_temp"] = self.protocol_temp_to_internal(command[9])
             else:
                 state["hue"] = command[7] + (256 * command[8])
+            if len(command) > 10:
+                state["effect_speed"] = command[10]
         elif effect_id == 15 and len(command) > 8:
             state["brightness"] = command[6]
             state["hue"] = command[7] + (256 * command[8])
+            if len(command) > 10:
+                state["effect_speed"] = command[10]
 
         return state
 
@@ -379,6 +424,11 @@ def calculate_checksum(data: list[int]) -> int:
 def add_checksum(cmd: list[int]) -> list[int]:
     """Return command bytes with checksum appended."""
     return cmd + [calculate_checksum(cmd)]
+
+
+def green_magenta_to_protocol(green_magenta: int) -> int:
+    """Convert user-facing G/M compensation (-50..50) to protocol units."""
+    return max(0, min(100, green_magenta + GM_NEUTRAL))
 
 
 def convert_effect_id_for_protocol(light_type: int, effect_id: int) -> int:

@@ -73,6 +73,19 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertEqual(warm[11], 27)
         self.assertEqual(cool[11], 65)
 
+    def test_cct_command_uses_green_magenta_compensation(self) -> None:
+        """CCT commands include G/M compensation on capable protocols."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        command = neewer_protocol.build_cct_command(
+            50,
+            neewer_protocol.kelvin_to_internal(2700),
+            green_magenta=-10,
+        )
+
+        self.assertEqual(command[12], 40)
+
     def test_standard_effect_command_uses_classic_scene_layout(self) -> None:
         """Classic lights put brightness before the converted effect id."""
         model = models.ModelInfo("Test", True, (3200, 5600), False, 0)
@@ -99,8 +112,29 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertEqual(len(commands), 3)
         self.assertEqual(commands[0][:3], [0x78, 0x8D, 0x08])
         self.assertEqual(commands[1][:3], [0x78, 0x8D, 0x08])
-        self.assertEqual(commands[2][:12], [0x78, 0x91, 12, 1, 2, 3, 4, 5, 6, 0x8B, 6, 50])
+        self.assertEqual(
+            commands[2][:12],
+            [0x78, 0x91, 12, 1, 2, 3, 4, 5, 6, 0x8B, 6, 50],
+        )
         self.assertEqual(commands[2][12:15], [27, 50, 5])
+
+    def test_infinity_effect_command_uses_tuning_parameters(self) -> None:
+        """Extended FX payloads include CCT G/M, speed, and strength values."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        commands = neewer_protocol.build_effect_commands(
+            4,
+            80,
+            neewer_protocol.kelvin_to_internal(2700),
+            240,
+            100,
+            green_magenta=-5,
+            speed=7,
+            strength=3,
+        )
+
+        self.assertEqual(commands[2][11:16], [80, 27, 45, 7, 3])
 
     def test_parse_cct_state_payload(self) -> None:
         """CCT status payloads update brightness and color temperature."""
@@ -117,6 +151,7 @@ class NeewerProtocolTest(unittest.TestCase):
                 "mode": "cct",
                 "brightness": 50,
                 "color_temp": 0,
+                "green_magenta": 0,
             },
         )
 
@@ -154,6 +189,7 @@ class NeewerProtocolTest(unittest.TestCase):
                 "mode": "cct",
                 "brightness": 75,
                 "color_temp": 100,
+                "green_magenta": 0,
             },
         )
 

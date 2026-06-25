@@ -120,6 +120,18 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         return None
 
     @property
+    def extra_state_attributes(self) -> dict[str, int]:
+        """Return Neewer-specific light tuning values."""
+        attributes = {}
+        if self._device.supports_green_magenta:
+            attributes["cct_green_magenta"] = self._device.green_magenta
+        if self._device.supports_effect_tuning:
+            attributes["fx_speed"] = self._device.effect_speed
+            attributes["fx_strength"] = self._device.effect_strength
+
+        return attributes
+
+    @property
     def available(self) -> bool:
         """Return True if entity is available.
 

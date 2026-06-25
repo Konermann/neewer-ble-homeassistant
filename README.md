@@ -29,7 +29,7 @@ support for additional devices.
 
 | Area | Included |
 | --- | --- |
-| Light control | Power, brightness, color temperature, RGB/HS color, and FX effects on supported models |
+| Light control | Power, brightness, CCT tuning, RGB/HS color, and FX effects on supported models |
 | Bluetooth | Persistent connection, reconnect button, connect/disconnect switch, connect-time state sync |
 | Diagnostics | Connection status, failure notifications, RSSI, adaptive timing, dump and benchmark buttons |
 | Model tuning | Model override, protocol override, CCT min/max, RGB/CCT capability flags |
@@ -92,8 +92,11 @@ After setup, the light appears as a normal Home Assistant light entity. You can:
 
 - Turn the light on and off.
 - Set brightness and color temperature.
+- Fine-tune CCT mode with a visible color-temperature control and
+  green/magenta compensation.
 - Set RGB/HS color on supported lights.
 - Select FX effects from the light entity's effect control on supported lights.
+- Adjust FX speed and strength on supported lights.
 - Disconnect Home Assistant from the light so another Bluetooth app can connect.
 - Reconnect a stale BLE session.
 - Create a diagnostic dump from the device page.

@@ -62,6 +62,9 @@ class NeewerLightDevice:
         self._color_temp = self._protocol.kelvin_to_internal(default_color_temp)
         self._hue = 0
         self._saturation = 100
+        self._green_magenta = 0
+        self._effect_speed = 5
+        self._effect_strength = 5
         self._color_mode = "cct"
         self._effect: str | None = None
         self._last_poll_success = False
@@ -105,6 +108,16 @@ class NeewerLightDevice:
         return self._model_info.cct_only
 
     @property
+    def supports_green_magenta(self) -> bool:
+        """Return true if CCT G/M compensation can be sent to the device."""
+        return not self.is_cct_only and self.light_type in (1, 2)
+
+    @property
+    def supports_effect_tuning(self) -> bool:
+        """Return true if FX speed/strength parameters can be sent."""
+        return bool(self.effect_list) and self.light_type in (1, 2)
+
+    @property
     def color_temp_range(self) -> tuple[int, int]:
         """Return the color temperature range in Kelvin."""
         return self._model_info.cct_range
@@ -128,6 +141,21 @@ class NeewerLightDevice:
     def saturation(self) -> int:
         """Return the cached saturation."""
         return self._saturation
+
+    @property
+    def green_magenta(self) -> int:
+        """Return cached CCT green/magenta compensation (-50..50)."""
+        return self._green_magenta
+
+    @property
+    def effect_speed(self) -> int:
+        """Return cached FX speed (1..10)."""
+        return self._effect_speed
+
+    @property
+    def effect_strength(self) -> int:
+        """Return cached FX strength (0..10)."""
+        return self._effect_strength
 
     @property
     def color_mode(self) -> str:
@@ -185,6 +213,10 @@ class NeewerLightDevice:
     def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Add a callback for connection or signal updates."""
         return self._connection.add_update_callback(callback)
+
+    def notify_update_callbacks(self) -> None:
+        """Notify Home Assistant entities that cached state changed."""
+        self._connection.notify_update_callbacks()
 
     def update_ble_device(self, ble_device: BLEDevice, rssi: int | None = None) -> None:
         """Update the cached BLE device details from Home Assistant."""
@@ -264,7 +296,11 @@ class NeewerLightDevice:
                 return False
 
         commands = self._power_on_commands(
-            self._protocol.build_cct_command(self._brightness, self._color_temp)
+            self._protocol.build_cct_command(
+                self._brightness,
+                self._color_temp,
+                self._green_magenta,
+            )
         )
         self._color_mode = "cct"
         success = await self._write_commands(commands)
@@ -278,7 +314,11 @@ class NeewerLightDevice:
             if self.is_cct_only:
                 command = self._protocol.build_brightness_only_command(0)
             else:
-                command = self._protocol.build_cct_command(0, self._color_temp)
+                command = self._protocol.build_cct_command(
+                    0,
+                    self._color_temp,
+                    self._green_magenta,
+                )
         else:
             command = self._protocol.build_power_command(False)
 
@@ -298,7 +338,11 @@ class NeewerLightDevice:
         if self.is_cct_only:
             command = self._protocol.build_brightness_only_command(self._brightness)
         else:
-            command = self._protocol.build_cct_command(self._brightness, self._color_temp)
+            command = self._protocol.build_cct_command(
+                self._brightness,
+                self._color_temp,
+                self._green_magenta,
+            )
 
         self._color_mode = "cct"
         commands = self._power_on_commands(command)
@@ -319,11 +363,32 @@ class NeewerLightDevice:
         if self.is_cct_only:
             command = self._protocol.build_temp_only_command(self._color_temp)
         else:
-            command = self._protocol.build_cct_command(self._brightness, self._color_temp)
+            command = self._protocol.build_cct_command(
+                self._brightness,
+                self._color_temp,
+                self._green_magenta,
+            )
 
         success = await self._write_command(command)
         self._clear_effect_if_success(success)
         return success
+
+    async def set_green_magenta(self, value: int) -> bool:
+        """Set CCT green/magenta compensation (-50..50)."""
+        self._green_magenta = max(-50, min(50, value))
+
+        if self._effect is not None:
+            return await self.set_effect(self._effect)
+
+        if self._is_on is False or self._color_mode != "cct":
+            return True
+
+        command = self._protocol.build_cct_command(
+            self._brightness,
+            self._color_temp,
+            self._green_magenta,
+        )
+        return await self._write_command(command)
 
     async def set_rgb(
         self, hue: int, saturation: int, brightness: int | None = None
@@ -375,6 +440,9 @@ class NeewerLightDevice:
             self._color_temp,
             self._hue,
             self._saturation,
+            self._green_magenta,
+            self._effect_speed,
+            self._effect_strength,
         )
         if not self.uses_infinity_protocol and self._is_on is not True:
             commands.insert(0, self._protocol.build_power_command(True))
@@ -384,6 +452,24 @@ class NeewerLightDevice:
         if success:
             self._effect = effect
         return success
+
+    async def set_effect_speed(self, value: int) -> bool:
+        """Set the cached FX speed and resend the active effect."""
+        self._effect_speed = max(1, min(10, value))
+
+        if self._effect is None:
+            return True
+
+        return await self.set_effect(self._effect)
+
+    async def set_effect_strength(self, value: int) -> bool:
+        """Set the cached FX strength and resend the active effect."""
+        self._effect_strength = max(0, min(10, value))
+
+        if self._effect is None:
+            return True
+
+        return await self.set_effect(self._effect)
 
     async def async_get_power_status(self, timeout: float | None = None) -> bool | None:
         """Query the device power status."""
@@ -547,7 +633,10 @@ class NeewerLightDevice:
                 "color_temp_kelvin": self.color_temp_kelvin,
                 "hue": self.hue,
                 "saturation": self.saturation,
+                "green_magenta": self.green_magenta,
                 "effect": self.effect,
+                "effect_speed": self.effect_speed,
+                "effect_strength": self.effect_strength,
                 "last_poll_success": self.last_poll_success,
             },
             "defaults": {
@@ -655,6 +744,15 @@ class NeewerLightDevice:
 
         if "saturation" in state:
             self._saturation = max(0, min(100, int(state["saturation"])))
+
+        if "green_magenta" in state:
+            self._green_magenta = max(-50, min(50, int(state["green_magenta"])))
+
+        if "effect_speed" in state:
+            self._effect_speed = max(1, min(10, int(state["effect_speed"])))
+
+        if "effect_strength" in state:
+            self._effect_strength = max(0, min(10, int(state["effect_strength"])))
 
         if mode == "power" and "is_on" in state:
             self._is_on = bool(state["is_on"])
