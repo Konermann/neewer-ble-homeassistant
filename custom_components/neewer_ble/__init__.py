@@ -23,13 +23,12 @@ from .const import (
     CONF_ADVERTISED_NAME,
     DOMAIN,
     DEFAULT_BRIGHTNESS,
-    DEFAULT_COLOR_TEMP,
     CONF_DEFAULT_BRIGHTNESS,
     CONF_DEFAULT_COLOR_TEMP,
     CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
 )
 from .device import NeewerLightDevice
-from .models import model_from_options
+from .models import default_color_temp_for_options, model_from_options
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,8 +99,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Get options with defaults
     default_brightness = entry.options.get(CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS)
-    default_color_temp = entry.options.get(CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP)
     model_info = model_from_options(advertised_name, entry.options)
+    default_color_temp = default_color_temp_for_options(
+        advertised_name,
+        entry.options,
+    )
     power_off_with_brightness_zero = entry.options.get(
         CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO, False
     )

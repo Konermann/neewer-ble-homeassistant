@@ -10,6 +10,7 @@ from .const import (
     CONF_CCT_MAX_KELVIN,
     CONF_CCT_MIN_KELVIN,
     CONF_CCT_ONLY,
+    CONF_DEFAULT_COLOR_TEMP,
     CONF_LIGHT_TYPE,
     CONF_MODEL_OVERRIDE,
     CONF_SUPPORTS_RGB,
@@ -177,4 +178,12 @@ def model_from_options(name: str, options: dict[str, Any]) -> ModelInfo:
         ),
         cct_only=options.get(CONF_CCT_ONLY, base_model.cct_only),
         light_type=options.get(CONF_LIGHT_TYPE, base_model.light_type),
+    )
+
+
+def default_color_temp_for_options(name: str, options: dict[str, Any]) -> int:
+    """Return configured default CCT, or the model's warmest CCT."""
+    return options.get(
+        CONF_DEFAULT_COLOR_TEMP,
+        model_from_options(name, options).cct_range[0],
     )
