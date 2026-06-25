@@ -137,6 +137,7 @@ class NeewerConnectionStatusSensor(NeewerEntityMixin, SensorEntity):
             "last_operation": self._device.last_connection_operation,
             "last_error": self._device.last_connection_error,
             "last_timing": self._device.last_connection_timing,
+            "adaptive": self._device.adaptive_performance,
         }
 
 

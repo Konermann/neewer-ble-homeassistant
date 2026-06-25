@@ -23,7 +23,7 @@ support for additional devices.
 | --- | --- |
 | Light control | Power, brightness, color temperature, RGB/HS color on supported models |
 | Bluetooth | Persistent connection, reconnect button, connect/disconnect switch |
-| Diagnostics | Connection status, failure notifications, RSSI, BLE detail sensors, dump and benchmark buttons |
+| Diagnostics | Connection status, failure notifications, RSSI, adaptive timing, dump and benchmark buttons |
 | Model tuning | Model override, protocol override, CCT min/max, RGB/CCT capability flags |
 | Off behavior | Choose real Neewer power-off command or brightness `0` off mode |
 
@@ -88,6 +88,7 @@ After setup, the light appears as a normal Home Assistant light entity. You can:
 - Disconnect Home Assistant from the light so another Bluetooth app can connect.
 - Reconnect a stale BLE session.
 - Create a diagnostic dump from the device page.
+- Run a BLE benchmark and let the integration adapt polling/command timing.
 
 ## Options
 

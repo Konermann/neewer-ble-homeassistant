@@ -16,6 +16,11 @@ from bleak.backends.device import BLEDevice
 from .connection import NeewerBLEConnection
 from .const import CMD_GET_CHANNEL_STATUS, CMD_GET_POWER_STATUS
 from .models import ModelInfo, detect_model, is_neewer_device, normalize_model_info
+from .performance import (
+    poll_backoff_seconds,
+    query_timeout_for_failures,
+    signal_quality_label,
+)
 from .protocol import NeewerProtocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +58,9 @@ class NeewerLightDevice:
         self._hue = 0
         self._saturation = 100
         self._last_poll_success = False
+        self._poll_failures = 0
+        self._poll_backoff_until = 0.0
+        self._last_poll_skip_reason: str | None = None
 
     @property
     def address(self) -> str:
@@ -195,7 +203,7 @@ class NeewerLightDevice:
                     self._brightness,
                 )
             )
-            success = await self._write_commands(commands, delay=_command_delay(commands))
+            success = await self._write_commands(commands)
             self._set_on_if_success(success, True)
             return success
 
@@ -208,10 +216,7 @@ class NeewerLightDevice:
                 if not self._is_on:
                     commands.insert(0, self._protocol.build_power_command(True))
 
-                success = await self._write_commands(
-                    commands,
-                    delay=_command_delay(commands),
-                )
+                success = await self._write_commands(commands)
                 self._set_on_if_success(success, True)
                 return success
             except Exception as err:
@@ -222,7 +227,7 @@ class NeewerLightDevice:
         commands = self._power_on_commands(
             self._protocol.build_cct_command(self._brightness, self._color_temp)
         )
-        success = await self._write_commands(commands, delay=_command_delay(commands))
+        success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
         return success
 
@@ -253,7 +258,7 @@ class NeewerLightDevice:
             command = self._protocol.build_cct_command(self._brightness, self._color_temp)
 
         commands = self._power_on_commands(command)
-        success = await self._write_commands(commands, delay=_command_delay(commands))
+        success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
         return success
 
@@ -291,12 +296,15 @@ class NeewerLightDevice:
                 self._brightness,
             )
         )
-        success = await self._write_commands(commands, delay=_command_delay(commands))
+        success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
         return success
 
-    async def async_get_power_status(self, timeout: float = 0.5) -> bool | None:
+    async def async_get_power_status(self, timeout: float | None = None) -> bool | None:
         """Query the device power status."""
+        if timeout is None:
+            timeout = query_timeout_for_failures(self._poll_failures, self.rssi)
+
         response = await self._connection.query(CMD_GET_POWER_STATUS, timeout=timeout)
         if response is None or len(response) < 4:
             _LOGGER.debug("Failed to get power status from %s", self._name)
@@ -322,7 +330,8 @@ class NeewerLightDevice:
 
     async def async_get_channel_status(self) -> dict | None:
         """Query the device channel/mode status."""
-        response = await self._connection.query(CMD_GET_CHANNEL_STATUS, timeout=0.5)
+        timeout = query_timeout_for_failures(self._poll_failures, self.rssi)
+        response = await self._connection.query(CMD_GET_CHANNEL_STATUS, timeout=timeout)
         if response is None or len(response) < 4:
             _LOGGER.debug("Failed to get channel status from %s", self._name)
             return None
@@ -342,22 +351,37 @@ class NeewerLightDevice:
     async def async_update(self) -> bool:
         """Poll the device for current state."""
         try:
+            backoff_remaining = self._poll_backoff_remaining()
+            if backoff_remaining > 0:
+                self._last_poll_success = False
+                self._last_poll_skip_reason = "query_backoff"
+                _LOGGER.debug(
+                    "Skipping poll for %s for %.1fs after repeated query failures",
+                    self._name,
+                    backoff_remaining,
+                )
+                return False
+
             if self._connection.wrote_within(2.0):
                 _LOGGER.debug("Skipping poll for %s after recent command", self._name)
+                self._last_poll_skip_reason = "recent_write"
                 return False
 
             power_status = await self.async_get_power_status()
             if power_status is not None:
                 self._is_on = power_status
                 self._last_poll_success = True
+                self._record_poll_result(True)
                 _LOGGER.debug("Updated state for %s: is_on=%s", self._name, self._is_on)
                 return True
 
             self._last_poll_success = False
+            self._record_poll_result(False)
             return False
         except Exception as err:
             _LOGGER.debug("Error polling %s: %s", self._name, err)
             self._last_poll_success = False
+            self._record_poll_result(False)
             return False
 
     @property
@@ -404,7 +428,26 @@ class NeewerLightDevice:
             "options": {
                 "power_off_with_brightness_zero": self._power_off_with_brightness_zero,
             },
+            "adaptive": self.adaptive_performance,
             "connection": self._connection.diagnostic_dump(),
+        }
+
+    @property
+    def adaptive_performance(self) -> dict[str, Any]:
+        """Return adaptive performance settings and current backoff state."""
+        return {
+            "signal_quality": signal_quality_label(self.rssi),
+            "inter_command_delay_ms": round(
+                self._connection.command_delay_for(2) * 1000,
+                1,
+            ),
+            "poll_query_timeout_ms": round(
+                query_timeout_for_failures(self._poll_failures, self.rssi) * 1000,
+                1,
+            ),
+            "poll_failures": self._poll_failures,
+            "poll_backoff_remaining_s": self._poll_backoff_remaining(),
+            "last_poll_skip_reason": self._last_poll_skip_reason,
         }
 
     async def async_benchmark(self) -> dict[str, Any]:
@@ -419,8 +462,9 @@ class NeewerLightDevice:
         query_ms = None
         if connected:
             query_started_at = time.perf_counter()
-            power_status = await self.async_get_power_status(timeout=0.5)
+            power_status = await self.async_get_power_status()
             query_ms = _elapsed_ms(query_started_at)
+            self._record_poll_result(power_status is not None)
 
         return {
             "connected": connected,
@@ -428,6 +472,11 @@ class NeewerLightDevice:
             "power_status": power_status,
             "power_query_ms": query_ms,
             "total_ms": _elapsed_ms(total_started_at),
+            "adaptive": self.adaptive_performance,
+            "recommendations": self._benchmark_recommendations(
+                connected,
+                power_status is not None,
+            ),
             "connection": self._connection.diagnostic_dump(),
         }
 
@@ -438,7 +487,7 @@ class NeewerLightDevice:
     async def _write_commands(
         self,
         commands: list[list[int]],
-        delay: float = 0.0,
+        delay: float | None = None,
         keep_connected: bool = True,
     ) -> bool:
         """Write one or more commands."""
@@ -455,6 +504,59 @@ class NeewerLightDevice:
         """Update cached power state after a successful command."""
         if success:
             self._is_on = is_on
+
+    def _record_poll_result(self, success: bool) -> None:
+        """Update adaptive polling state from a status-query result."""
+        if success:
+            self._poll_failures = 0
+            self._poll_backoff_until = 0.0
+            self._last_poll_skip_reason = None
+            return
+
+        self._poll_failures += 1
+        backoff = poll_backoff_seconds(self._poll_failures)
+        if backoff:
+            self._poll_backoff_until = time.monotonic() + backoff
+            self._last_poll_skip_reason = "query_backoff"
+            _LOGGER.debug(
+                "Backing off status polls for %s by %ds after %d failures",
+                self._name,
+                backoff,
+                self._poll_failures,
+            )
+        else:
+            self._last_poll_skip_reason = "query_failed"
+
+    def _poll_backoff_remaining(self) -> float:
+        """Return remaining adaptive poll backoff in seconds."""
+        return round(max(0.0, self._poll_backoff_until - time.monotonic()), 1)
+
+    def _benchmark_recommendations(
+        self,
+        connected: bool,
+        query_success: bool,
+    ) -> list[str]:
+        """Return concise benchmark guidance."""
+        recommendations: list[str] = []
+        if not connected:
+            recommendations.append(
+                "Connection failed. Check range, power, and whether another app is connected."
+            )
+        if self.rssi is not None and self.rssi < -85:
+            recommendations.append(
+                "Bluetooth signal is weak; keeping the connection open matters more "
+                "than reconnecting."
+            )
+        if connected and not query_success:
+            recommendations.append(
+                "Status queries are timing out; adaptive polling will back off to "
+                "keep commands responsive."
+            )
+
+        if not recommendations:
+            recommendations.append("Connection timing looks healthy.")
+
+        return recommendations
 
     def _get_hardware_mac_macos(self) -> str | None:
         """Get hardware MAC address on macOS using system_profiler."""
@@ -515,14 +617,6 @@ class NeewerLightDevice:
 
         _LOGGER.warning("Unexpected MAC format: %s", self._address)
         return [0, 0, 0, 0, 0, 0]
-
-
-def _command_delay(commands: list[list[int]]) -> float:
-    """Return inter-command delay only when a sequence needs it."""
-    if len(commands) > 1:
-        return 0.05
-
-    return 0.0
 
 
 def _elapsed_ms(started_at: float) -> float:

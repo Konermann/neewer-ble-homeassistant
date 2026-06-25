@@ -17,6 +17,11 @@ from .const import (
     NEEWER_NOTIFY_CHARACTERISTIC_UUID,
     NEEWER_WRITE_CHARACTERISTIC_UUID,
 )
+from .performance import (
+    MAX_INTER_COMMAND_DELAY,
+    command_delay_for_rssi,
+    next_command_delay,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +47,10 @@ class NeewerBLEConnection:
         self._last_timing: dict | None = None
         self._timing_stats: dict[str, dict[str, float | int]] = {}
         self._last_write_monotonic = 0.0
+        self._adaptive_command_delay = command_delay_for_rssi(self._rssi)
+        self._last_effective_command_delay = 0.0
+        self._write_successes = 0
+        self._write_failures = 0
 
     @property
     def address(self) -> str:
@@ -104,6 +113,13 @@ class NeewerBLEConnection:
 
         return time.monotonic() - self._last_write_monotonic < seconds
 
+    def command_delay_for(self, command_count: int) -> float:
+        """Return the adaptive delay between commands in a sequence."""
+        if command_count <= 1:
+            return 0.0
+
+        return self._adaptive_command_delay
+
     def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Add a callback for connection or signal updates."""
         self._update_callbacks.add(callback)
@@ -126,6 +142,12 @@ class NeewerBLEConnection:
             self._rssi = rssi
         else:
             self._rssi = getattr(ble_device, "rssi", None)
+
+        if self.rssi != old_rssi:
+            self._adaptive_command_delay = max(
+                command_delay_for_rssi(self.rssi),
+                min(self._adaptive_command_delay, MAX_INTER_COMMAND_DELAY),
+            )
 
         if self.rssi != old_rssi:
             self.notify_update_callbacks()
@@ -194,7 +216,7 @@ class NeewerBLEConnection:
     async def write_commands(
         self,
         commands: list[list[int]],
-        delay: float = 0.0,
+        delay: float | None = None,
         keep_connected: bool = True,
     ) -> bool:
         """Write one or more commands as one serialized BLE operation."""
@@ -204,9 +226,14 @@ class NeewerBLEConnection:
             queue_wait_ms = _elapsed_ms(queued_at, started_at)
             if not await self.connect():
                 self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
+                self._record_write_result(False, len(commands))
                 return False
 
             success = False
+            effective_delay = (
+                self.command_delay_for(len(commands)) if delay is None else delay
+            )
+            self._last_effective_command_delay = effective_delay
             self._last_operation = "write"
             self._last_commands = [list(command) for command in commands]
             self._last_error = None
@@ -223,17 +250,19 @@ class NeewerBLEConnection:
                         bytes(command),
                         response=False,
                     )
-                    if delay and index < len(commands) - 1:
-                        await asyncio.sleep(delay)
+                    if effective_delay and index < len(commands) - 1:
+                        await asyncio.sleep(effective_delay)
 
                 success = True
                 self._last_write_monotonic = time.monotonic()
                 self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
+                self._record_write_result(True, len(commands))
                 return True
             except BleakError as err:
                 _LOGGER.error("Failed to send command: %s", err)
                 self._last_error = str(err)
                 self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
+                self._record_write_result(False, len(commands))
                 return False
             finally:
                 if not success or not keep_connected:
@@ -378,7 +407,35 @@ class NeewerBLEConnection:
             "last_error": self._last_error,
             "last_timing": self._last_timing,
             "timing_stats": self._timing_stats,
+            "adaptive": {
+                "inter_command_delay_ms": round(
+                    self._adaptive_command_delay * 1000,
+                    1,
+                ),
+                "last_effective_command_delay_ms": round(
+                    self._last_effective_command_delay * 1000,
+                    1,
+                ),
+                "write_successes": self._write_successes,
+                "write_failures": self._write_failures,
+            },
         }
+
+    def _record_write_result(self, success: bool, command_count: int) -> None:
+        """Update adaptive write tuning from the latest write result."""
+        if success:
+            self._write_successes += 1
+        else:
+            self._write_failures += 1
+
+        if command_count <= 1:
+            return
+
+        self._adaptive_command_delay = next_command_delay(
+            self._adaptive_command_delay,
+            self.rssi,
+            success,
+        )
 
     def _record_timing(
         self,

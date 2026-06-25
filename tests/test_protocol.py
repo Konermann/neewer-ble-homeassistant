@@ -37,6 +37,7 @@ def load_component_module(name: str):
 
 const = load_component_module("const")
 models = load_component_module("models")
+performance = load_component_module("performance")
 protocol = load_component_module("protocol")
 
 
@@ -102,6 +103,34 @@ class NeewerProtocolTest(unittest.TestCase):
             models.detect_model("Neewer CB100C").name,
             "CB100C",
         )
+
+
+class NeewerPerformanceTest(unittest.TestCase):
+    """Verify adaptive BLE performance helper behavior."""
+
+    def test_command_delay_tracks_signal_quality(self) -> None:
+        """Weak RSSI gets safer command spacing than strong RSSI."""
+        self.assertEqual(performance.command_delay_for_rssi(-65), 0.02)
+        self.assertEqual(performance.command_delay_for_rssi(-88), 0.04)
+        self.assertEqual(performance.command_delay_for_rssi(None), 0.05)
+
+    def test_command_delay_moves_toward_signal_baseline(self) -> None:
+        """Successful writes reduce delay while failures increase it."""
+        self.assertEqual(performance.next_command_delay(0.06, -88, True), 0.055)
+        self.assertEqual(performance.next_command_delay(0.04, -88, True), 0.04)
+        self.assertEqual(performance.next_command_delay(0.04, -88, False), 0.06)
+
+    def test_poll_backoff_starts_after_repeated_query_failures(self) -> None:
+        """Polling backs off only after several consecutive misses."""
+        self.assertEqual(performance.poll_backoff_seconds(2), 0)
+        self.assertEqual(performance.poll_backoff_seconds(3), 30)
+        self.assertEqual(performance.poll_backoff_seconds(4), 60)
+
+    def test_query_timeout_accounts_for_weak_signal(self) -> None:
+        """Weak links get a little more time without blocking indefinitely."""
+        self.assertEqual(performance.query_timeout_for_failures(0, -70), 0.5)
+        self.assertEqual(performance.query_timeout_for_failures(0, -88), 0.65)
+        self.assertEqual(performance.query_timeout_for_failures(2, -88), 0.75)
 
 
 if __name__ == "__main__":
