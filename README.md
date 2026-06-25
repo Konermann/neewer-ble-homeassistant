@@ -29,7 +29,7 @@ support for additional devices.
 
 | Area | Included |
 | --- | --- |
-| Light control | Power, brightness, color temperature, RGB/HS color on supported models |
+| Light control | Power, brightness, color temperature, RGB/HS color, and FX effects on supported models |
 | Bluetooth | Persistent connection, reconnect button, connect/disconnect switch |
 | Diagnostics | Connection status, failure notifications, RSSI, adaptive timing, dump and benchmark buttons |
 | Model tuning | Model override, protocol override, CCT min/max, RGB/CCT capability flags |

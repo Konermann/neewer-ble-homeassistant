@@ -73,6 +73,35 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertEqual(warm[11], 27)
         self.assertEqual(cool[11], 65)
 
+    def test_standard_effect_command_uses_classic_scene_layout(self) -> None:
+        """Classic lights put brightness before the converted effect id."""
+        model = models.ModelInfo("Test", True, (3200, 5600), False, 0)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        self.assertEqual(
+            neewer_protocol.build_effect_commands(21, 50, 0, 240, 100),
+            [[0x78, 0x88, 0x02, 50, 1, 0x35]],
+        )
+
+    def test_infinity_effect_command_wraps_scene_payload(self) -> None:
+        """Infinity lights wrap FX payloads with MAC and scene mode bytes."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        commands = neewer_protocol.build_effect_commands(
+            6,
+            50,
+            neewer_protocol.kelvin_to_internal(2700),
+            240,
+            100,
+        )
+
+        self.assertEqual(len(commands), 3)
+        self.assertEqual(commands[0][:3], [0x78, 0x8D, 0x08])
+        self.assertEqual(commands[1][:3], [0x78, 0x8D, 0x08])
+        self.assertEqual(commands[2][:12], [0x78, 0x91, 12, 1, 2, 3, 4, 5, 6, 0x8B, 6, 50])
+        self.assertEqual(commands[2][12:15], [27, 50, 5])
+
     def test_model_options_override_capabilities(self) -> None:
         """Options can override detected model parameters."""
         model = models.model_from_options(

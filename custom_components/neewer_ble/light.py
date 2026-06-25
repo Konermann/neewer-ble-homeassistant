@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
+    ATTR_EFFECT,
     ATTR_HS_COLOR,
     ColorMode,
     LightEntity,
@@ -104,16 +105,20 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         """Turn on the light."""
         has_brightness = ATTR_BRIGHTNESS in kwargs
         has_color_temp = ATTR_COLOR_TEMP_KELVIN in kwargs
+        has_effect = ATTR_EFFECT in kwargs
         has_hs = ATTR_HS_COLOR in kwargs
 
         brightness = kwargs.get(ATTR_BRIGHTNESS)
         color_temp_kelvin = kwargs.get(ATTR_COLOR_TEMP_KELVIN)
+        effect = kwargs.get(ATTR_EFFECT)
         hs_color = kwargs.get(ATTR_HS_COLOR)
 
         # Convert HA brightness (0-255) to Neewer (0-100)
         brightness_pct = int(brightness / 2.55) if brightness is not None else None
 
-        if has_hs and hs_color is not None and self._device.supports_rgb:
+        if has_effect and effect is not None:
+            await self._device.set_effect(effect, brightness_pct)
+        elif has_hs and hs_color is not None and self._device.supports_rgb:
             # RGB mode
             hue, saturation = hs_color
             await self._device.set_rgb(
@@ -133,6 +138,8 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
             # Brightness alone should not switch the current color mode.
             if brightness_pct == 0:
                 await self._device.set_brightness(0)
+            elif self._device.effect is not None:
+                await self._device.set_effect(self._device.effect, brightness_pct)
             elif self._attr_color_mode == ColorMode.HS and self._device.supports_rgb:
                 await self._device.set_rgb(
                     hue=self._device.hue,
@@ -152,6 +159,16 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
             self._attr_color_mode = ColorMode.COLOR_TEMP
 
         self.async_write_ha_state()
+
+    @property
+    def effect(self) -> str | None:
+        """Return the active FX effect."""
+        return self._device.effect
+
+    @property
+    def effect_list(self) -> list[str]:
+        """Return supported FX effects."""
+        return self._device.effect_list
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""

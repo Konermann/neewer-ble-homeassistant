@@ -15,6 +15,7 @@ from bleak.backends.device import BLEDevice
 
 from .connection import NeewerBLEConnection
 from .const import CMD_GET_CHANNEL_STATUS, CMD_GET_POWER_STATUS
+from .effects import effect_id_for_name, effect_names_for_light_type
 from .models import ModelInfo, detect_model, is_neewer_device, normalize_model_info
 from .performance import (
     poll_backoff_seconds,
@@ -61,6 +62,7 @@ class NeewerLightDevice:
         self._color_temp = self._protocol.kelvin_to_internal(default_color_temp)
         self._hue = 0
         self._saturation = 100
+        self._effect: str | None = None
         self._last_poll_success = False
         self._poll_failures = 0
         self._poll_backoff_until = 0.0
@@ -130,6 +132,19 @@ class NeewerLightDevice:
     def color_temp_kelvin(self) -> int:
         """Return color temperature in Kelvin."""
         return self._protocol.internal_to_kelvin(self._color_temp)
+
+    @property
+    def effect(self) -> str | None:
+        """Return the active cached FX effect."""
+        return self._effect
+
+    @property
+    def effect_list(self) -> list[str]:
+        """Return supported FX effects for this device."""
+        if self.is_cct_only:
+            return []
+
+        return effect_names_for_light_type(self.light_type)
 
     @property
     def is_connected(self) -> bool:
@@ -218,6 +233,7 @@ class NeewerLightDevice:
             )
             success = await self._write_commands(commands)
             self._set_on_if_success(success, True)
+            self._clear_effect_if_success(success)
             return success
 
         if self.is_cct_only:
@@ -231,6 +247,7 @@ class NeewerLightDevice:
 
                 success = await self._write_commands(commands)
                 self._set_on_if_success(success, True)
+                self._clear_effect_if_success(success)
                 return success
             except Exception as err:
                 _LOGGER.error("Error in multi-command sequence: %s", err)
@@ -242,6 +259,7 @@ class NeewerLightDevice:
         )
         success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
+        self._clear_effect_if_success(success)
         return success
 
     async def turn_off(self) -> bool:
@@ -256,6 +274,8 @@ class NeewerLightDevice:
 
         success = await self._write_command(command)
         self._set_on_if_success(success, False)
+        if success:
+            self._effect = None
         return success
 
     async def set_brightness(self, brightness: int) -> bool:
@@ -273,6 +293,7 @@ class NeewerLightDevice:
         commands = self._power_on_commands(command)
         success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
+        self._clear_effect_if_success(success)
         return success
 
     async def set_color_temp(self, kelvin: int) -> bool:
@@ -287,7 +308,9 @@ class NeewerLightDevice:
         else:
             command = self._protocol.build_cct_command(self._brightness, self._color_temp)
 
-        return await self._write_command(command)
+        success = await self._write_command(command)
+        self._clear_effect_if_success(success)
+        return success
 
     async def set_rgb(
         self, hue: int, saturation: int, brightness: int | None = None
@@ -311,6 +334,41 @@ class NeewerLightDevice:
         )
         success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
+        self._clear_effect_if_success(success)
+        return success
+
+    async def set_effect(
+        self,
+        effect: str,
+        brightness: int | None = None,
+    ) -> bool:
+        """Set a built-in FX/scene effect."""
+        if self.is_cct_only:
+            _LOGGER.warning("Device %s does not support FX effects", self._name)
+            return False
+
+        effect_id = effect_id_for_name(self.light_type, effect)
+        if effect_id is None:
+            _LOGGER.warning("Device %s does not support effect %s", self._name, effect)
+            return False
+
+        if brightness is not None:
+            self._brightness = max(0, min(100, brightness))
+
+        commands = self._protocol.build_effect_commands(
+            effect_id,
+            self._brightness,
+            self._color_temp,
+            self._hue,
+            self._saturation,
+        )
+        if not self.uses_infinity_protocol and self._is_on is not True:
+            commands.insert(0, self._protocol.build_power_command(True))
+
+        success = await self._write_commands(commands)
+        self._set_on_if_success(success, True)
+        if success:
+            self._effect = effect
         return success
 
     async def async_get_power_status(self, timeout: float | None = None) -> bool | None:
@@ -449,6 +507,7 @@ class NeewerLightDevice:
                 "color_temp_kelvin": self.color_temp_kelvin,
                 "hue": self.hue,
                 "saturation": self.saturation,
+                "effect": self.effect,
                 "last_poll_success": self.last_poll_success,
             },
             "defaults": {
@@ -535,6 +594,11 @@ class NeewerLightDevice:
         """Update cached power state after a successful command."""
         if success:
             self._is_on = is_on
+
+    def _clear_effect_if_success(self, success: bool) -> None:
+        """Clear cached FX state after returning to a direct light mode."""
+        if success:
+            self._effect = None
 
     def _record_poll_result(self, success: bool) -> None:
         """Update adaptive polling state from a status-query result."""
