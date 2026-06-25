@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neewer BLE Lights logo</title>
+  <desc id="desc">A stylized LED light mark next to the Neewer BLE Lights name.</desc>
+  <defs>
+    <linearGradient id="lamp" x1="48" y1="56" x2="168" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffcf6a"/>
+      <stop offset="1" stop-color="#ff7a2f"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="24" y1="32" x2="196" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="256" rx="44" fill="#15171c"/>
+  <path d="M54 72c31-31 93-31 124 0" fill="none" stroke="url(#beam)" stroke-width="14" stroke-linecap="round" opacity=".95"/>
+  <path d="M70 94c24-21 68-21 92 0" fill="none" stroke="url(#beam)" stroke-width="12" stroke-linecap="round" opacity=".8"/>
+  <path d="M80 118h72l18 72H62l18-72z" fill="url(#lamp)"/>
+  <path d="M92 118h48v-28c0-13-10-24-24-24S92 77 92 90v28z" fill="#f8fbff"/>
+  <path d="M86 190h60v18H86z" fill="#f8fbff"/>
+  <path d="M99 218h34" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M172 108l26 20-26 20V108z" fill="none" stroke="#54c6ff" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M198 128l-26 20 26 20" fill="none" stroke="#54c6ff" stroke-width="10" stroke-linejoin="round"/>
+  <text x="248" y="118" fill="#f8fbff" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700">Neewer</text>
+  <text x="250" y="168" fill="#a8b3c7" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="600">BLE Lights for Home Assistant</text>
+  <path d="M250 196h316" fill="none" stroke="#ff9f43" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neewer BLE Lights icon</title>
+  <desc id="desc">A stylized LED light with Bluetooth signal arcs.</desc>
+  <defs>
+    <linearGradient id="lamp" x1="68" y1="58" x2="188" y2="198" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffcf6a"/>
+      <stop offset="1" stop-color="#ff7a2f"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="40" y1="28" x2="216" y2="228" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#15171c"/>
+  <path d="M66 72c31-31 93-31 124 0" fill="none" stroke="url(#beam)" stroke-width="14" stroke-linecap="round" opacity=".95"/>
+  <path d="M82 94c24-21 68-21 92 0" fill="none" stroke="url(#beam)" stroke-width="12" stroke-linecap="round" opacity=".8"/>
+  <path d="M92 118h72l18 72H74l18-72z" fill="url(#lamp)"/>
+  <path d="M104 118h48v-28c0-13-10-24-24-24s-24 11-24 24v28z" fill="#f8fbff"/>
+  <path d="M98 190h60v18H98z" fill="#f8fbff"/>
+  <path d="M111 218h34" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M184 108l26 20-26 20V108z" fill="none" stroke="#54c6ff" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M210 128l-26 20 26 20" fill="none" stroke="#54c6ff" stroke-width="10" stroke-linejoin="round"/>
+</svg>
