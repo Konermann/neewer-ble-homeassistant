@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
 from typing import Any
 
@@ -22,8 +21,6 @@ from .device import NeewerLightDevice
 from .entity import NeewerEntityMixin
 
 _LOGGER = logging.getLogger(__name__)
-
-SCAN_INTERVAL = timedelta(seconds=10)
 
 
 async def async_setup_entry(
@@ -52,7 +49,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
 
     _attr_has_entity_name = True
     _attr_name = None  # Use device name
-    _attr_should_poll = True
+    _attr_should_poll = False
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the light."""
@@ -72,7 +69,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         self._attr_max_color_temp_kelvin = max_kelvin
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if light is on."""
         return self._device.is_on
 
@@ -99,7 +96,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         """Return True if entity is available.
 
         Always returns True since BLE connections are on-demand.
-        Polling helps sync state but doesn't determine availability.
+        The connection status entity exposes BLE health separately.
         """
         return True
 
@@ -166,12 +163,9 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         await self._device.disconnect()
 
     async def async_update(self) -> None:
-        """Fetch new state data for this light.
-
-        This polls the device via BLE to get the actual power state.
-        """
+        """Manually fetch current power state from the light."""
         if not self._device.is_connected:
             return
 
-        _LOGGER.debug("Polling state for %s", self._device.name)
+        _LOGGER.debug("Manually syncing state for %s", self._device.name)
         await self._device.async_update()

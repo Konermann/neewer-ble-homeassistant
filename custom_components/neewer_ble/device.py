@@ -25,6 +25,8 @@ from .protocol import NeewerProtocol
 
 _LOGGER = logging.getLogger(__name__)
 
+CONNECT_STATE_SYNC_TIMEOUT = 0.75
+
 
 class NeewerLightDevice:
     """Represents a Neewer BLE light device."""
@@ -52,7 +54,7 @@ class NeewerLightDevice:
         self._default_color_temp = default_color_temp
         self._power_off_with_brightness_zero = power_off_with_brightness_zero
 
-        self._is_on = False
+        self._is_on: bool | None = None
         self._brightness = default_brightness
         self._color_temp = self._protocol.kelvin_to_internal(default_color_temp)
         self._hue = 0
@@ -103,7 +105,7 @@ class NeewerLightDevice:
         return self._model_info.cct_range
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if light is on."""
         return self._is_on
 
@@ -165,9 +167,14 @@ class NeewerLightDevice:
         """Update the cached BLE device details from Home Assistant."""
         self._connection.update_ble_device(ble_device, rssi)
 
-    async def connect(self) -> bool:
+    async def connect(self, sync_state: bool = True) -> bool:
         """Connect to the device."""
-        return await self._connection.connect()
+        was_connected = self.is_connected
+        connected = await self._connection.connect()
+        if connected and sync_state and not was_connected:
+            await self.async_sync_state_after_connect()
+
+        return connected
 
     async def disconnect(self) -> None:
         """Disconnect from the device."""
@@ -175,7 +182,11 @@ class NeewerLightDevice:
 
     async def reconnect(self) -> bool:
         """Disconnect and establish a fresh BLE connection."""
-        return await self._connection.reconnect()
+        connected = await self._connection.reconnect()
+        if connected:
+            await self.async_sync_state_after_connect()
+
+        return connected
 
     async def turn_on(
         self,
@@ -213,7 +224,7 @@ class NeewerLightDevice:
                     self._protocol.build_brightness_only_command(self._brightness),
                     self._protocol.build_temp_only_command(self._color_temp),
                 ]
-                if not self._is_on:
+                if self._is_on is not True:
                     commands.insert(0, self._protocol.build_power_command(True))
 
                 success = await self._write_commands(commands)
@@ -266,7 +277,7 @@ class NeewerLightDevice:
         """Set color temperature in Kelvin."""
         self._color_temp = self._protocol.kelvin_to_internal(kelvin)
 
-        if not self._is_on:
+        if self._is_on is False:
             return True
 
         if self.is_cct_only:
@@ -349,7 +360,7 @@ class NeewerLightDevice:
         return None
 
     async def async_update(self) -> bool:
-        """Poll the device for current state."""
+        """Manually query the device for current state."""
         try:
             backoff_remaining = self._poll_backoff_remaining()
             if backoff_remaining > 0:
@@ -383,6 +394,23 @@ class NeewerLightDevice:
             self._last_poll_success = False
             self._record_poll_result(False)
             return False
+
+    async def async_sync_state_after_connect(self) -> bool:
+        """Try once to sync power state after a new BLE connection."""
+        power_status = await self.async_get_power_status(
+            timeout=CONNECT_STATE_SYNC_TIMEOUT
+        )
+        if power_status is None:
+            self._last_poll_success = False
+            self._record_poll_result(False)
+            self._connection.notify_update_callbacks()
+            return False
+
+        self._is_on = power_status
+        self._last_poll_success = True
+        self._record_poll_result(True)
+        self._connection.notify_update_callbacks()
+        return True
 
     @property
     def last_poll_success(self) -> bool:
@@ -445,6 +473,7 @@ class NeewerLightDevice:
                 query_timeout_for_failures(self._poll_failures, self.rssi) * 1000,
                 1,
             ),
+            "status_query_mode": "connect_only",
             "poll_failures": self._poll_failures,
             "poll_backoff_remaining_s": self._poll_backoff_remaining(),
             "last_poll_skip_reason": self._last_poll_skip_reason,
@@ -455,7 +484,7 @@ class NeewerLightDevice:
         total_started_at = time.perf_counter()
 
         connect_started_at = time.perf_counter()
-        connected = await self.connect()
+        connected = await self.connect(sync_state=False)
         connect_ms = _elapsed_ms(connect_started_at)
 
         power_status = None
@@ -495,7 +524,7 @@ class NeewerLightDevice:
 
     def _power_on_commands(self, command: list[int]) -> list[list[int]]:
         """Return command sequence, including power-on only when needed."""
-        if self._is_on:
+        if self._is_on is True:
             return [command]
 
         return [self._protocol.build_power_command(True), command]
@@ -549,8 +578,8 @@ class NeewerLightDevice:
             )
         if connected and not query_success:
             recommendations.append(
-                "Status queries are timing out; adaptive polling will back off and "
-                "use short probes to keep commands responsive."
+                "Status queries are timing out; normal light control will avoid "
+                "recurring status polls."
             )
 
         if not recommendations:

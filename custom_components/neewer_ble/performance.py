@@ -9,7 +9,7 @@ MAX_INTER_COMMAND_DELAY = 0.10
 DEFAULT_QUERY_TIMEOUT = 0.5
 WEAK_SIGNAL_QUERY_TIMEOUT = 0.65
 SLOW_QUERY_TIMEOUT = 0.75
-BACKOFF_PROBE_QUERY_TIMEOUT = 0.30
+MAX_QUERY_TIMEOUT = 0.9
 
 
 def command_delay_for_rssi(rssi: int | None) -> float:
@@ -38,16 +38,13 @@ def next_command_delay(current: float, rssi: int | None, success: bool) -> float
 
 def query_timeout_for_failures(failures: int, rssi: int | None) -> float:
     """Return the query timeout to use for slow/weak BLE links."""
-    if failures >= 3:
-        return BACKOFF_PROBE_QUERY_TIMEOUT
-
     timeout = DEFAULT_QUERY_TIMEOUT
     if rssi is not None and rssi < -85:
         timeout = WEAK_SIGNAL_QUERY_TIMEOUT
     if failures >= 2:
         timeout = max(timeout, SLOW_QUERY_TIMEOUT)
 
-    return timeout
+    return min(MAX_QUERY_TIMEOUT, timeout)
 
 
 def poll_backoff_seconds(failures: int) -> int:

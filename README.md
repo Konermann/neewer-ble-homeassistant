@@ -97,6 +97,8 @@ After setup, the light appears as a normal Home Assistant light entity. You can:
 - Reconnect a stale BLE session.
 - Create a diagnostic dump from the device page.
 - Run a BLE benchmark and let the integration adapt polling/command timing.
+- Read the lamp state once after connecting and avoid recurring BLE status
+  polls during normal light control.
 
 ## Options
 
