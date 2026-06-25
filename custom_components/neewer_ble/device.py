@@ -36,7 +36,7 @@ class NeewerLightDevice:
         ble_device: BLEDevice,
         model_info: ModelInfo | dict[str, Any] | None = None,
         default_brightness: int = 100,
-        default_color_temp: int = 3200,
+        default_color_temp: int | None = None,
         power_off_with_brightness_zero: bool = False,
     ) -> None:
         """Initialize the Neewer light device."""
@@ -48,6 +48,8 @@ class NeewerLightDevice:
         self._name = ble_device.name or "Unknown Neewer Light"
         self._model_info = normalize_model_info(model_info) or detect_model(self._name)
         self._protocol = NeewerProtocol(self._model_info, self._get_mac_bytes)
+        if default_color_temp is None:
+            default_color_temp = self._model_info.cct_range[0]
 
         self._hw_mac_address: str | None = None
         self._default_brightness = default_brightness

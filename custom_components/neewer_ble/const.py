@@ -12,7 +12,6 @@ CMD_GET_CHANNEL_STATUS = [0x78, 0x84, 0x00, 0xFC]  # Response type 1: current ch
 
 # Default values
 DEFAULT_BRIGHTNESS = 100
-DEFAULT_COLOR_TEMP = 3200
 
 # Options flow config keys
 CONF_DEFAULT_BRIGHTNESS = "default_brightness"

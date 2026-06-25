@@ -93,6 +93,33 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertTrue(model.cct_only)
         self.assertEqual(model.light_type, 2)
 
+    def test_default_color_temp_uses_model_minimum(self) -> None:
+        """The implicit default CCT is the warmest supported model value."""
+        self.assertEqual(
+            models.default_color_temp_for_options("NW-20220051&FFFFFFFF", {}),
+            2700,
+        )
+
+    def test_default_color_temp_uses_overridden_minimum(self) -> None:
+        """The implicit default follows configured CCT range overrides."""
+        self.assertEqual(
+            models.default_color_temp_for_options(
+                "NW-20220051&FFFFFFFF",
+                {const.CONF_CCT_MIN_KELVIN: 2600},
+            ),
+            2600,
+        )
+
+    def test_default_color_temp_allows_explicit_override(self) -> None:
+        """A configured default CCT still wins over the implicit model minimum."""
+        self.assertEqual(
+            models.default_color_temp_for_options(
+                "NW-20220051&FFFFFFFF",
+                {const.CONF_DEFAULT_COLOR_TEMP: 3200},
+            ),
+            3200,
+        )
+
     def test_friendly_name_uses_detected_model_name(self) -> None:
         """Discovered devices get a user-facing model name."""
         self.assertEqual(

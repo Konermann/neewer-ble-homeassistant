@@ -30,13 +30,13 @@ from .const import (
     CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
     CONF_SUPPORTS_RGB,
     DEFAULT_BRIGHTNESS,
-    DEFAULT_COLOR_TEMP,
     DOMAIN,
     LIGHT_TYPE_OPTIONS,
     MODEL_AUTO,
 )
 from .models import (
     base_model_for_options,
+    default_color_temp_for_options,
     friendly_name,
     is_neewer_device,
     model_from_options,
@@ -248,10 +248,7 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
             )
             model_info = model_from_options(device_name, options)
             min_kelvin, max_kelvin = model_info.cct_range
-            default_color_temp = options.get(
-                CONF_DEFAULT_COLOR_TEMP,
-                DEFAULT_COLOR_TEMP,
-            )
+            default_color_temp = default_color_temp_for_options(device_name, options)
 
             if min_kelvin >= max_kelvin:
                 errors["base"] = "invalid_cct_range"
@@ -271,11 +268,11 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
         current_brightness = options.get(
             CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS
         )
-        current_color_temp = options.get(
-            CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP
-        )
         current_min_kelvin = options.get(CONF_CCT_MIN_KELVIN, base_min_kelvin)
         current_max_kelvin = options.get(CONF_CCT_MAX_KELVIN, base_max_kelvin)
+        current_color_temp = options.get(
+            CONF_DEFAULT_COLOR_TEMP, current_min_kelvin
+        )
         current_light_type = options.get(CONF_LIGHT_TYPE, base_model.light_type)
         if current_light_type not in LIGHT_TYPE_OPTIONS:
             current_light_type = base_model.light_type
@@ -345,5 +342,25 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
         for key, previous_value in previous_defaults.items():
             if key not in stored_options and user_input.get(key) == previous_value:
                 user_input.pop(key, None)
+
+        previous_default_color_temp = default_color_temp_for_options(
+            device_name,
+            stored_options,
+        )
+        final_default_options = dict(user_input)
+        final_default_options.pop(CONF_DEFAULT_COLOR_TEMP, None)
+        final_min_kelvin = model_from_options(
+            device_name,
+            final_default_options,
+        ).cct_range[0]
+        if (
+            (
+                CONF_DEFAULT_COLOR_TEMP not in stored_options
+                and user_input.get(CONF_DEFAULT_COLOR_TEMP)
+                == previous_default_color_temp
+            )
+            or user_input.get(CONF_DEFAULT_COLOR_TEMP) == final_min_kelvin
+        ):
+            user_input.pop(CONF_DEFAULT_COLOR_TEMP, None)
 
         return user_input

@@ -19,7 +19,6 @@ from .const import (
     CONF_DEFAULT_BRIGHTNESS,
     CONF_DEFAULT_COLOR_TEMP,
     DEFAULT_BRIGHTNESS,
-    DEFAULT_COLOR_TEMP,
     DOMAIN,
 )
 from .device import NeewerLightDevice
@@ -64,7 +63,7 @@ NUMBER_DESCRIPTIONS = (
         native_max_value=10000,
         native_step=1,
         native_unit_of_measurement="K",
-        default_value=DEFAULT_COLOR_TEMP,
+        default_value=0,
     ),
     NumberDescription(
         key=CONF_CCT_MIN_KELVIN,
@@ -75,7 +74,7 @@ NUMBER_DESCRIPTIONS = (
         native_max_value=10000,
         native_step=1,
         native_unit_of_measurement="K",
-        default_value=DEFAULT_COLOR_TEMP,
+        default_value=0,
     ),
     NumberDescription(
         key=CONF_CCT_MAX_KELVIN,
@@ -86,7 +85,7 @@ NUMBER_DESCRIPTIONS = (
         native_max_value=10000,
         native_step=1,
         native_unit_of_measurement="K",
-        default_value=DEFAULT_COLOR_TEMP,
+        default_value=0,
     ),
 )
 
@@ -142,6 +141,12 @@ class NeewerOptionNumber(NeewerEntityMixin, NumberEntity):
             if self._description.key == CONF_CCT_MIN_KELVIN:
                 return min_kelvin
             return max_kelvin
+
+        if self._description.key == CONF_DEFAULT_COLOR_TEMP:
+            return self._entry.options.get(
+                self._description.key,
+                self._current_cct_range[0],
+            )
 
         return self._entry.options.get(
             self._description.key,

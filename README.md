@@ -114,7 +114,7 @@ device page focused on normal light control.
 | Option | Use |
 | --- | --- |
 | Default brightness | Brightness used when turning on without an explicit value |
-| Default color temperature | Color temperature used when turning on without an explicit value |
+| Default color temperature | Color temperature used when turning on. Uses the lowest configured CCT if unset. |
 | Brightness `0` off mode | Sends zero brightness instead of the Neewer power-off command |
 | Model override | Forces a known model profile when auto-detection is wrong |
 | Lowest/highest CCT | Overrides the model Kelvin range, for example `2700` to `6500` |
