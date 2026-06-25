@@ -17,6 +17,7 @@ except ImportError:
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_ADVERTISED_NAME,
@@ -31,6 +32,25 @@ from .device import NeewerLightDevice
 from .models import model_from_options
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_ENTRY_VERSION = 2
+
+PRIMARY_CONTROL_SUFFIXES = {
+    "connection",
+    "reconnect",
+}
+
+ADVANCED_OPTION_SUFFIXES = {
+    "cct_max_kelvin",
+    "cct_min_kelvin",
+    "cct_only",
+    "default_brightness",
+    "default_color_temp",
+    "light_type",
+    "model_override",
+    "power_off_with_brightness_zero",
+    "supports_rgb",
+}
 
 PLATFORMS: list[Platform] = [
     Platform.LIGHT,
@@ -136,21 +156,62 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading Neewer BLE device: %s", entry.data.get(CONF_ADDRESS))
-    
+
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    
+
     if unload_ok:
         # Disconnect and clean up
         device: NeewerLightDevice = hass.data[DOMAIN].pop(entry.entry_id)
         await device.disconnect()
-    
+
     return unload_ok
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old entry."""
     _LOGGER.debug("Migrating from version %s", entry.version)
-    
-    # No migrations needed yet
+
+    if entry.version < 2:
+        _migrate_entity_registry(hass, entry)
+        hass.config_entries.async_update_entry(entry, version=CONFIG_ENTRY_VERSION)
+
     return True
+
+
+def _migrate_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Move connection controls and hide advanced option entities once."""
+    address = entry.data.get(CONF_ADDRESS)
+    if not address:
+        return
+
+    base_unique_id = address.replace(":", "_").lower()
+    entity_registry = er.async_get(hass)
+
+    for registry_entry in er.async_entries_for_config_entry(
+        entity_registry,
+        entry.entry_id,
+    ):
+        suffix = _registry_entry_suffix(registry_entry.unique_id, base_unique_id)
+        if suffix in PRIMARY_CONTROL_SUFFIXES:
+            if registry_entry.entity_category is not None:
+                entity_registry.async_update_entity(
+                    registry_entry.entity_id,
+                    entity_category=None,
+                )
+            continue
+
+        if suffix in ADVANCED_OPTION_SUFFIXES and registry_entry.hidden_by is None:
+            entity_registry.async_update_entity(
+                registry_entry.entity_id,
+                hidden_by=er.RegistryEntryHider.INTEGRATION,
+            )
+
+
+def _registry_entry_suffix(unique_id: str, base_unique_id: str) -> str | None:
+    """Return the entity-specific unique-id suffix for this device."""
+    prefix = f"{base_unique_id}_"
+    if not unique_id.startswith(prefix):
+        return None
+
+    return unique_id[len(prefix) :]

@@ -89,7 +89,6 @@ class NeewerConnectionSwitch(NeewerEntityMixin, SwitchEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Connection"
-    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
         """Initialize the switch."""
@@ -135,6 +134,7 @@ class NeewerOptionSwitch(NeewerEntityMixin, SwitchEntity):
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
+    _attr_entity_registry_visible_default = False
 
     def __init__(
         self,

@@ -72,6 +72,7 @@ class NeewerOptionSelect(NeewerEntityMixin, SelectEntity):
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_entity_registry_enabled_default = False
+    _attr_entity_registry_visible_default = False
     _attr_has_entity_name = True
 
     def __init__(

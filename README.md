@@ -103,7 +103,11 @@ After setup, the light appears as a normal Home Assistant light entity. You can:
 Options are available in two places:
 
 - **Settings** -> **Devices & Services** -> the integration's options dialog
-- The Home Assistant device page, as config entities in the app
+- The Home Assistant device page, as hidden-by-default advanced config entities
+
+The everyday Bluetooth connection switch and reconnect button are primary device
+controls. Model and default-value overrides are hidden by default to keep the
+device page focused on normal light control.
 
 | Option | Use |
 | --- | --- |

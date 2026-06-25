@@ -45,7 +45,6 @@ class NeewerReconnectButton(NeewerEntityMixin, ButtonEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Reconnect"
-    _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:bluetooth-transfer"
 
     def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
