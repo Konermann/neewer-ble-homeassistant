@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neewer BLE Lights logo</title>
+  <desc id="desc">A stylized LED light mark next to the Neewer Bluetooth LE Lights name.</desc>
+  <defs>
+    <linearGradient id="lamp" x1="62" y1="118" x2="170" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffcf6a"/>
+      <stop offset="1" stop-color="#ff7a2f"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="256" rx="44" fill="#15171c"/>
+  <path d="M54 72c31-31 93-31 124 0" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M70 94c24-21 68-21 92 0" fill="none" stroke="#dbeafe" stroke-width="12" stroke-linecap="round"/>
+  <path d="M80 118h72l18 72H62l18-72z" fill="url(#lamp)"/>
+  <path d="M92 118h48v-28c0-13-10-24-24-24S92 77 92 90v28z" fill="#f8fbff"/>
+  <path d="M86 190h60v18H86z" fill="#f8fbff"/>
+  <path d="M99 218h34" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="184" cy="138" r="32" fill="#0082fc"/>
+  <path d="M192 119l-16-15v28l-12-12-7 7 12 11-12 11 7 7 12-12v28l16-15-19-19 19-19zm-8 8l-8 8v-16l8 8zm-8 14l8 8-8 8v-16z" fill="#fff"/>
+  <text x="248" y="118" fill="#f8fbff" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="700">Neewer</text>
+  <text x="250" y="168" fill="#a8b3c7" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="600">BLE Lights for Home Assistant</text>
+  <path d="M250 196h316" fill="none" stroke="#ff9f43" stroke-width="6" stroke-linecap="round"/>
+</svg>

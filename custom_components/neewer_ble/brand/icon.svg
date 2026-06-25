@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Neewer BLE Lights icon</title>
+  <desc id="desc">A stylized LED light with Bluetooth signal arcs.</desc>
+  <defs>
+    <linearGradient id="lamp" x1="74" y1="118" x2="182" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffcf6a"/>
+      <stop offset="1" stop-color="#ff7a2f"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#15171c"/>
+  <path d="M66 72c31-31 93-31 124 0" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <path d="M82 94c24-21 68-21 92 0" fill="none" stroke="#dbeafe" stroke-width="12" stroke-linecap="round"/>
+  <path d="M92 118h72l18 72H74l18-72z" fill="url(#lamp)"/>
+  <path d="M104 118h48v-28c0-13-10-24-24-24s-24 11-24 24v28z" fill="#f8fbff"/>
+  <path d="M98 190h60v18H98z" fill="#f8fbff"/>
+  <path d="M111 218h34" fill="none" stroke="#f8fbff" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="196" cy="138" r="32" fill="#0082fc"/>
+  <path d="M204 119l-16-15v28l-12-12-7 7 12 11-12 11 7 7 12-12v28l16-15-19-19 19-19zm-8 8l-8 8v-16l8 8zm-8 14l8 8-8 8v-16z" fill="#fff"/>
+</svg>

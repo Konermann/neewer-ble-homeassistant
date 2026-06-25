@@ -1,5 +1,13 @@
 # Neewer BLE Lights Extended for Home Assistant
 
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/Konermann/neewer-ble-homeassistant/main/custom_components/neewer_ble/brand/logo.png"
+    alt="Neewer BLE Lights Extended"
+    width="720"
+  >
+</p>
+
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
