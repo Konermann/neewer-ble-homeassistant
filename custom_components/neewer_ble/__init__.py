@@ -32,7 +32,7 @@ from .models import default_color_temp_for_options, model_from_options
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_ENTRY_VERSION = 2
+CONFIG_ENTRY_VERSION = 3
 
 PRIMARY_CONTROL_SUFFIXES = {
     "connection",
@@ -175,14 +175,23 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.debug("Migrating from version %s", entry.version)
 
     if entry.version < 2:
-        _migrate_entity_registry(hass, entry)
+        _migrate_entity_registry(hass, entry, hide_advanced=True)
+    elif entry.version < 3:
+        _migrate_entity_registry(hass, entry, hide_advanced=False)
+
+    if entry.version < CONFIG_ENTRY_VERSION:
         hass.config_entries.async_update_entry(entry, version=CONFIG_ENTRY_VERSION)
 
     return True
 
 
-def _migrate_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Move connection controls and hide advanced option entities once."""
+def _migrate_entity_registry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    *,
+    hide_advanced: bool,
+) -> None:
+    """Move primary controls and tuck advanced option entities away once."""
     address = entry.data.get(CONF_ADDRESS)
     if not address:
         return
@@ -203,11 +212,27 @@ def _migrate_entity_registry(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 )
             continue
 
-        if suffix in ADVANCED_OPTION_SUFFIXES and registry_entry.hidden_by is None:
-            entity_registry.async_update_entity(
-                registry_entry.entity_id,
-                hidden_by=er.RegistryEntryHider.INTEGRATION,
-            )
+        if suffix in ADVANCED_OPTION_SUFFIXES:
+            update_kwargs = {}
+            should_hide = hide_advanced and registry_entry.hidden_by is None
+            if should_hide:
+                update_kwargs["hidden_by"] = er.RegistryEntryHider.INTEGRATION
+
+            if (
+                registry_entry.disabled_by is None
+                and (
+                    should_hide
+                    or registry_entry.hidden_by
+                    == er.RegistryEntryHider.INTEGRATION
+                )
+            ):
+                update_kwargs["disabled_by"] = er.RegistryEntryDisabler.INTEGRATION
+
+            if update_kwargs:
+                entity_registry.async_update_entity(
+                    registry_entry.entity_id,
+                    **update_kwargs,
+                )
 
 
 def _registry_entry_suffix(unique_id: str, base_unique_id: str) -> str | None:

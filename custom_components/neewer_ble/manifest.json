@@ -9,7 +9,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Konermann/neewer-ble-homeassistant/issues",
   "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=3.0.0"],
-  "version": "0.3.13",
+  "version": "0.3.14",
   "bluetooth": [
     {
       "local_name": "NEEWER*"

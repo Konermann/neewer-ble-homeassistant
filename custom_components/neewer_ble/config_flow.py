@@ -49,7 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Neewer BLE Lights."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialize the config flow."""
