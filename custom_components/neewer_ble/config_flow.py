@@ -19,6 +19,7 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     BLE_SCAN_TIMEOUT,
+    CONF_ADVERTISED_NAME,
     CONF_CCT_MAX_KELVIN,
     CONF_CCT_MIN_KELVIN,
     CONF_CCT_ONLY,
@@ -36,6 +37,7 @@ from .const import (
 )
 from .models import (
     base_model_for_options,
+    friendly_name,
     is_neewer_device,
     model_from_options,
     model_options,
@@ -73,11 +75,13 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovery_info = discovery_info
         
         # Check if this looks like a Neewer device
-        name = discovery_info.name or ""
-        if not is_neewer_device(name):
+        advertised_name = discovery_info.name or ""
+        if not is_neewer_device(advertised_name):
             return self.async_abort(reason="not_neewer_device")
-        
-        self.context["title_placeholders"] = {"name": name}
+
+        self.context["title_placeholders"] = {
+            "name": friendly_name(advertised_name),
+        }
         
         return await self.async_step_bluetooth_confirm()
 
@@ -86,11 +90,14 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm discovery of a Neewer device."""
         if user_input is not None:
+            advertised_name = self._discovery_info.name or ""
+            name = friendly_name(advertised_name)
             return self.async_create_entry(
-                title=self._discovery_info.name or "Neewer Light",
+                title=name,
                 data={
                     CONF_ADDRESS: self._discovery_info.address,
-                    CONF_NAME: self._discovery_info.name,
+                    CONF_NAME: name,
+                    CONF_ADVERTISED_NAME: advertised_name,
                 },
             )
 
@@ -98,7 +105,7 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="bluetooth_confirm",
             description_placeholders={
-                "name": self._discovery_info.name or "Unknown",
+                "name": friendly_name(self._discovery_info.name),
                 "address": self._discovery_info.address,
             },
         )
@@ -118,14 +125,17 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if address in self._discovered_devices:
                 device = self._discovered_devices[address]
+                advertised_name = device.name or ""
+                name = friendly_name(advertised_name)
                 await self.async_set_unique_id(address)
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=device.name or "Neewer Light",
+                    title=name,
                     data={
                         CONF_ADDRESS: address,
-                        CONF_NAME: device.name,
+                        CONF_NAME: name,
+                        CONF_ADVERTISED_NAME: advertised_name,
                     },
                 )
             else:
@@ -136,7 +146,7 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # Build the selection schema - always include manual option
         device_options = {
-            address: f"{device.name or 'Unknown'} ({address})"
+            address: f"{friendly_name(device.name)} ({address})"
             for address, device in self._discovered_devices.items()
         }
         # Add manual entry option
@@ -174,6 +184,7 @@ class NeewerBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     data={
                         CONF_ADDRESS: address,
                         CONF_NAME: name,
+                        CONF_ADVERTISED_NAME: name,
                     },
                 )
 
@@ -222,7 +233,10 @@ class NeewerBLEOptionsFlow(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         errors: dict[str, str] = {}
-        device_name = self.config_entry.data.get(CONF_NAME, "")
+        device_name = self.config_entry.data.get(
+            CONF_ADVERTISED_NAME,
+            self.config_entry.data.get(CONF_NAME, ""),
+        )
         stored_options = dict(self.config_entry.options)
         options = stored_options
 

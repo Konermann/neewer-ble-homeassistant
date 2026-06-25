@@ -92,6 +92,17 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertTrue(model.cct_only)
         self.assertEqual(model.light_type, 2)
 
+    def test_friendly_name_uses_detected_model_name(self) -> None:
+        """Discovered devices get a user-facing model name."""
+        self.assertEqual(
+            models.friendly_name("NW-20220051&FFFFFFFF"),
+            "Neewer CB100C",
+        )
+        self.assertEqual(
+            models.detect_model("Neewer CB100C").name,
+            "CB100C",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

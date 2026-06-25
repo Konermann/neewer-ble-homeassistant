@@ -19,6 +19,7 @@ from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_ADVERTISED_NAME,
     DOMAIN,
     DEFAULT_BRIGHTNESS,
     DEFAULT_COLOR_TEMP,
@@ -46,6 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Neewer BLE Lights from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
     name: str = entry.data.get("name", "Neewer Light")
+    advertised_name: str = entry.data.get(CONF_ADVERTISED_NAME, name)
 
     _LOGGER.info("Setting up Neewer BLE device: %s (%s)", name, address)
 
@@ -69,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # The actual connection will happen when commands are sent
         ble_device = BLEDevice(
             address=address,
-            name=name,
+            name=advertised_name,
             details={},
             rssi=-100,
         )
@@ -79,7 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Get options with defaults
     default_brightness = entry.options.get(CONF_DEFAULT_BRIGHTNESS, DEFAULT_BRIGHTNESS)
     default_color_temp = entry.options.get(CONF_DEFAULT_COLOR_TEMP, DEFAULT_COLOR_TEMP)
-    model_info = model_from_options(name, entry.options)
+    model_info = model_from_options(advertised_name, entry.options)
     power_off_with_brightness_zero = entry.options.get(
         CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO, False
     )

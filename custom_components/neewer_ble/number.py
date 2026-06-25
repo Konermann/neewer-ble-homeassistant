@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_ADVERTISED_NAME,
     CONF_CCT_MAX_KELVIN,
     CONF_CCT_MIN_KELVIN,
     CONF_DEFAULT_BRIGHTNESS,
@@ -178,7 +179,10 @@ class NeewerOptionNumber(NeewerEntityMixin, NumberEntity):
     @property
     def _current_cct_range(self) -> tuple[int, int]:
         """Return the currently effective CCT range."""
-        device_name = self._entry.data.get(CONF_NAME, self._device.name)
+        device_name = self._entry.data.get(
+            CONF_ADVERTISED_NAME,
+            self._entry.data.get(CONF_NAME, self._device.name),
+        )
         return model_from_options(device_name, self._entry.options).cct_range
 
     def _validate_value(self, value: int) -> None:

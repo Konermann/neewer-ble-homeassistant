@@ -12,6 +12,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_ADVERTISED_NAME,
     CONF_LIGHT_TYPE,
     CONF_MODEL_OVERRIDE,
     DOMAIN,
@@ -128,5 +129,8 @@ class NeewerOptionSelect(NeewerEntityMixin, SelectEntity):
     @property
     def _current_light_type(self) -> int:
         """Return the effective protocol type."""
-        device_name = self._entry.data.get(CONF_NAME, self._device.name)
+        device_name = self._entry.data.get(
+            CONF_ADVERTISED_NAME,
+            self._entry.data.get(CONF_NAME, self._device.name),
+        )
         return model_from_options(device_name, self._entry.options).light_type

@@ -105,10 +105,19 @@ def detect_model(name: str) -> ModelInfo:
         .replace("-", "")
         .replace(" ", "")
     )
+    if not name_clean:
+        _LOGGER.debug("Unknown model, using defaults for: %s", name)
+        return UNKNOWN_MODEL
 
     for code, info in SUPPORTED_MODELS.items():
         code_clean = code.upper().replace("-", "").replace(" ", "")
-        if code_clean in name_clean or name_clean in code_clean:
+        model_name_clean = info.name.upper().replace("-", "").replace(" ", "")
+        if (
+            code_clean in name_clean
+            or model_name_clean in name_clean
+            or (len(name_clean) >= 4 and name_clean in code_clean)
+            or (len(name_clean) >= 4 and name_clean in model_name_clean)
+        ):
             _LOGGER.debug(
                 "Detected model: %s (light_type=%d, cct_only=%s)",
                 info.name,
@@ -119,6 +128,18 @@ def detect_model(name: str) -> ModelInfo:
 
     _LOGGER.debug("Unknown model, using defaults for: %s", name)
     return UNKNOWN_MODEL
+
+
+def friendly_name(name: str | None) -> str:
+    """Return a user-facing name for a BLE advertised device name."""
+    if not name:
+        return "Neewer Light"
+
+    model_info = detect_model(name)
+    if model_info == UNKNOWN_MODEL:
+        return "Neewer Light"
+
+    return f"Neewer {model_info.name}"
 
 
 def model_options() -> dict[str, str]:

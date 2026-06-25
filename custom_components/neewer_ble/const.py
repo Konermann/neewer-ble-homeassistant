@@ -24,6 +24,7 @@ CONF_CCT_MAX_KELVIN = "cct_max_kelvin"
 CONF_SUPPORTS_RGB = "supports_rgb"
 CONF_CCT_ONLY = "cct_only"
 CONF_LIGHT_TYPE = "light_type"
+CONF_ADVERTISED_NAME = "advertised_name"
 
 MODEL_AUTO = "auto"
 

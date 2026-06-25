@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_ADVERTISED_NAME,
     CONF_CCT_ONLY,
     CONF_POWER_OFF_WITH_BRIGHTNESS_ZERO,
     CONF_SUPPORTS_RGB,
@@ -161,7 +162,10 @@ class NeewerOptionSwitch(NeewerEntityMixin, SwitchEntity):
     def _default_value(self) -> bool:
         """Return the default value for the current model."""
         if self._description.key in (CONF_SUPPORTS_RGB, CONF_CCT_ONLY):
-            device_name = self._entry.data.get(CONF_NAME, self._device.name)
+            device_name = self._entry.data.get(
+                CONF_ADVERTISED_NAME,
+                self._entry.data.get(CONF_NAME, self._device.name),
+            )
             base_model = base_model_for_options(device_name, self._entry.options)
 
             if self._description.key == CONF_SUPPORTS_RGB:
