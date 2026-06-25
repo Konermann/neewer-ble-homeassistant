@@ -99,12 +99,45 @@ async def async_setup_entry(
     device: NeewerLightDevice = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities(
-        [NeewerSignalStrengthSensor(device, entry)]
+        [
+            NeewerConnectionStatusSensor(device, entry),
+            NeewerSignalStrengthSensor(device, entry),
+        ]
         + [
             NeewerDeviceInfoSensor(device, entry, description)
             for description in DEVICE_INFO_SENSORS
         ]
     )
+
+
+class NeewerConnectionStatusSensor(NeewerEntityMixin, SensorEntity):
+    """Representation of the BLE connection status."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Connection Status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:bluetooth"
+    _attr_should_poll = False
+
+    def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        self._setup_neewer_entity(device, entry, "connection_status")
+
+    @property
+    def native_value(self) -> str:
+        """Return the current BLE connection status."""
+        return self._device.connection_status
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return additional BLE status details."""
+        return {
+            "address": self._device.address,
+            "rssi": self._device.rssi,
+            "last_operation": self._device.last_connection_operation,
+            "last_error": self._device.last_connection_error,
+            "last_timing": self._device.last_connection_timing,
+        }
 
 
 class NeewerDeviceInfoSensor(NeewerEntityMixin, SensorEntity):

@@ -15,6 +15,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .device import NeewerLightDevice
 from .entity import NeewerEntityMixin
+from .notifications import (
+    clear_connection_notification,
+    create_connection_failure_notification,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,9 +57,16 @@ class NeewerReconnectButton(NeewerEntityMixin, ButtonEntity):
         _LOGGER.info("Reconnecting %s via button entity", self._device.name)
 
         if self._device.is_connected:
-            await self._device.reconnect()
+            success = await self._device.reconnect()
+            action = "Reconnect"
         else:
-            await self._device.connect()
+            success = await self._device.connect()
+            action = "Connect"
+
+        if success:
+            clear_connection_notification(self.hass, self._device)
+        else:
+            create_connection_failure_notification(self.hass, self._device, action)
 
 
 class NeewerDiagnosticDumpButton(NeewerEntityMixin, ButtonEntity):

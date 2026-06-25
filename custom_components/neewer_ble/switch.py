@@ -22,6 +22,10 @@ from .const import (
 from .device import NeewerLightDevice
 from .entity import NeewerEntityMixin
 from .models import base_model_for_options
+from .notifications import (
+    clear_connection_notification,
+    create_connection_failure_notification,
+)
 from .options import update_entry_option
 
 _LOGGER = logging.getLogger(__name__)
@@ -110,7 +114,10 @@ class NeewerConnectionSwitch(NeewerEntityMixin, SwitchEntity):
             return
 
         _LOGGER.info("Connecting to %s via switch entity", self._device.name)
-        await self._device.connect()
+        if await self._device.connect():
+            clear_connection_notification(self.hass, self._device)
+        else:
+            create_connection_failure_notification(self.hass, self._device, "Connect")
 
     async def async_turn_off(self, **kwargs) -> None:
         """Disconnect from the light."""

@@ -129,6 +129,26 @@ class NeewerLightDevice:
         """Return the latest known Bluetooth RSSI in dBm."""
         return self._connection.rssi
 
+    @property
+    def connection_status(self) -> str:
+        """Return a concise BLE connection status."""
+        return self._connection.connection_status
+
+    @property
+    def last_connection_operation(self) -> str | None:
+        """Return the last BLE connection operation."""
+        return self._connection.last_operation
+
+    @property
+    def last_connection_error(self) -> str | None:
+        """Return the last BLE connection error."""
+        return self._connection.last_error
+
+    @property
+    def last_connection_timing(self) -> dict | None:
+        """Return timing details for the last BLE operation."""
+        return self._connection.last_timing
+
     def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Add a callback for connection or signal updates."""
         return self._connection.add_update_callback(callback)

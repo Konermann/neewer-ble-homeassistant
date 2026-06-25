@@ -63,6 +63,40 @@ class NeewerBLEConnection:
         """Return the latest known RSSI."""
         return self._rssi
 
+    @property
+    def last_operation(self) -> str | None:
+        """Return the last BLE operation."""
+        return self._last_operation
+
+    @property
+    def last_error(self) -> str | None:
+        """Return the last BLE error."""
+        return self._last_error
+
+    @property
+    def last_timing(self) -> dict | None:
+        """Return timing details for the last BLE operation."""
+        return self._last_timing
+
+    @property
+    def connection_status(self) -> str:
+        """Return a concise connection status for Home Assistant."""
+        if self.is_connected:
+            return "Connected"
+
+        if self._last_operation in ("connect", "reconnect"):
+            if self._last_error:
+                return "Connection failed"
+            return "Connecting"
+
+        if self._last_operation == "unexpected_disconnect":
+            return "Unexpectedly disconnected"
+
+        if self._last_operation == "disconnect" and self._last_error:
+            return "Disconnect failed"
+
+        return "Disconnected"
+
     def wrote_within(self, seconds: float) -> bool:
         """Return true if a write completed recently."""
         if self._last_write_monotonic == 0.0:
@@ -118,6 +152,7 @@ class NeewerBLEConnection:
                 _LOGGER.debug("Connecting to %s", self.address)
                 self._last_operation = "connect"
                 self._last_error = None
+                self.notify_update_callbacks()
                 self._client = await establish_connection(
                     BleakClientWithServiceCache,
                     self._ble_device,
@@ -148,6 +183,9 @@ class NeewerBLEConnection:
 
     async def reconnect(self) -> bool:
         """Disconnect, if needed, and establish a fresh BLE connection."""
+        self._last_operation = "reconnect"
+        self._last_error = None
+        self.notify_update_callbacks()
         async with self._command_lock:
             if self.is_connected:
                 await self._disconnect()
@@ -269,6 +307,7 @@ class NeewerBLEConnection:
             queue_wait_ms = _elapsed_ms(queued_at, started_at)
             self._last_operation = "disconnect"
             self._last_error = None
+            self.notify_update_callbacks()
             client = self._client
             if client is None:
                 self._record_timing(
