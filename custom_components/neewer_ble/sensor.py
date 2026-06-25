@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from homeassistant.components.bluetooth import async_ble_device_from_address
+from homeassistant.components.bluetooth import (
+    async_ble_device_from_address,
+)
+try:
+    from homeassistant.components.bluetooth import async_last_service_info
+except ImportError:
+    async_last_service_info = None
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -54,6 +61,18 @@ class NeewerSignalStrengthSensor(NeewerEntityMixin, SensorEntity):
 
     async def async_update(self) -> None:
         """Refresh the cached BLE RSSI from Home Assistant."""
+        service_info = None
+        if async_last_service_info is not None:
+            service_info = async_last_service_info(
+                self.hass,
+                self._device.address.upper(),
+                connectable=True,
+            )
+
+        if service_info is not None:
+            self._device.update_ble_device(service_info.device, service_info.rssi)
+            return
+
         ble_device = async_ble_device_from_address(
             self.hass,
             self._device.address.upper(),

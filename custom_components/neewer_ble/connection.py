@@ -37,6 +37,7 @@ class NeewerBLEConnection:
         self._last_operation: str | None = None
         self._last_commands: list[list[int]] = []
         self._last_error: str | None = None
+        self._rssi: int | None = getattr(ble_device, "rssi", None)
 
     @property
     def address(self) -> str:
@@ -56,7 +57,7 @@ class NeewerBLEConnection:
     @property
     def rssi(self) -> int | None:
         """Return the latest known RSSI."""
-        return getattr(self._ble_device, "rssi", None)
+        return self._rssi
 
     def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Add a callback for connection or signal updates."""
@@ -72,10 +73,14 @@ class NeewerBLEConnection:
         for callback in list(self._update_callbacks):
             callback()
 
-    def update_ble_device(self, ble_device: BLEDevice) -> None:
+    def update_ble_device(self, ble_device: BLEDevice, rssi: int | None = None) -> None:
         """Update cached BLE device details."""
         old_rssi = self.rssi
         self._ble_device = ble_device
+        if rssi is not None:
+            self._rssi = rssi
+        else:
+            self._rssi = getattr(ble_device, "rssi", None)
 
         if self.rssi != old_rssi:
             self.notify_update_callbacks()

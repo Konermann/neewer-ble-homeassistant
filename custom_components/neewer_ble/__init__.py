@@ -9,6 +9,11 @@ from bleak.backends.device import BLEDevice
 from homeassistant.components.bluetooth import (
     async_ble_device_from_address,
 )
+try:
+    from homeassistant.components.bluetooth import async_last_service_info
+except ImportError:
+    async_last_service_info = None
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
@@ -45,7 +50,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up Neewer BLE device: %s (%s)", name, address)
 
     # Try to get the BLE device
-    ble_device = async_ble_device_from_address(hass, address.upper(), connectable=True)
+    address_upper = address.upper()
+    service_info = None
+    if async_last_service_info is not None:
+        service_info = async_last_service_info(hass, address_upper, connectable=True)
+
+    ble_device = async_ble_device_from_address(hass, address_upper, connectable=True)
+    if ble_device is None and service_info is not None:
+        ble_device = service_info.device
 
     if ble_device is None:
         _LOGGER.warning(
@@ -80,6 +92,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         default_color_temp=default_color_temp,
         power_off_with_brightness_zero=power_off_with_brightness_zero,
     )
+    if service_info is not None:
+        device.update_ble_device(service_info.device, service_info.rssi)
+
     _LOGGER.info(
         "Created device handler - Model: %s, RGB: %s, Infinity: %s, "
         "Default Bri: %d, Default CT: %dK",

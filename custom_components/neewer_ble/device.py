@@ -132,9 +132,9 @@ class NeewerLightDevice:
         """Add a callback for connection or signal updates."""
         return self._connection.add_update_callback(callback)
 
-    def update_ble_device(self, ble_device: BLEDevice) -> None:
+    def update_ble_device(self, ble_device: BLEDevice, rssi: int | None = None) -> None:
         """Update the cached BLE device details from Home Assistant."""
-        self._connection.update_ble_device(ble_device)
+        self._connection.update_ble_device(ble_device, rssi)
 
     async def connect(self) -> bool:
         """Connect to the device."""
