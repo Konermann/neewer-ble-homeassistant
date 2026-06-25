@@ -70,6 +70,7 @@ class NeewerOptionSelect(NeewerEntityMixin, SelectEntity):
     """Select entity that updates a config entry option."""
 
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
     _attr_has_entity_name = True
 
     def __init__(
