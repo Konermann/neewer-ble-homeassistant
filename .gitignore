@@ -1,0 +1,32 @@
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Editor swap/backup files
+.vscode/
+*.swp
+*.swo
+.*.swp
+.*.swo
+*~
+
+# Python cache and test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and build artifacts
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Local Home Assistant runtime files
+.storage/
+deps/
+home-assistant.log*
