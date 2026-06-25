@@ -59,11 +59,12 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
 
         # Determine supported color modes
         if device.supports_rgb:
-            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS}
+            supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS}
             self._attr_color_mode = ColorMode.COLOR_TEMP
         else:
-            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+            supported_color_modes = {ColorMode.COLOR_TEMP}
             self._attr_color_mode = ColorMode.COLOR_TEMP
+        self._attr_supported_color_modes = supported_color_modes
 
         # Color temperature range
         min_kelvin, max_kelvin = device.color_temp_range
@@ -72,6 +73,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
 
         if device.effect_list:
             self._attr_supported_features = LightEntityFeature.EFFECT
+            self._attr_effect_list = device.effect_list
 
     @property
     def is_on(self) -> bool | None:
@@ -87,10 +89,23 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
     @property
     def color_mode(self) -> ColorMode:
         """Return the current color mode."""
+        if self._device.effect is not None:
+            return ColorMode.BRIGHTNESS
+
         if self._device.color_mode == "hs" and self._device.supports_rgb:
             return ColorMode.HS
 
         return ColorMode.COLOR_TEMP
+
+    @property
+    def supported_color_modes(self) -> set[ColorMode]:
+        """Return supported color modes."""
+        return self._attr_supported_color_modes
+
+    @property
+    def supported_features(self) -> LightEntityFeature:
+        """Return supported light features."""
+        return self._attr_supported_features
 
     @property
     def color_temp_kelvin(self) -> int | None:
