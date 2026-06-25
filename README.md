@@ -23,7 +23,7 @@ support for additional devices.
 | --- | --- |
 | Light control | Power, brightness, color temperature, RGB/HS color on supported models |
 | Bluetooth | Persistent connection, reconnect button, connect/disconnect switch |
-| Diagnostics | Connection state, RSSI sensor, diagnostic dump button |
+| Diagnostics | Connection state, RSSI, BLE address/name/model sensors, diagnostic dump button |
 | Model tuning | Model override, protocol override, CCT min/max, RGB/CCT capability flags |
 | Off behavior | Choose real Neewer power-off command or brightness `0` off mode |
 

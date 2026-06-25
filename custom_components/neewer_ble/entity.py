@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 
 from .const import DOMAIN
 from .device import NeewerLightDevice
@@ -29,6 +29,7 @@ class NeewerEntityMixin:
             f"{base_unique_id}_{unique_suffix}" if unique_suffix else base_unique_id
         )
         self._attr_device_info = DeviceInfo(
+            connections={(CONNECTION_BLUETOOTH, device.address)},
             identifiers={(DOMAIN, device.address)},
             name=entry.data.get(CONF_NAME, device.name),
             manufacturer="Neewer",
