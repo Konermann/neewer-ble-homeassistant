@@ -549,8 +549,8 @@ class NeewerLightDevice:
             )
         if connected and not query_success:
             recommendations.append(
-                "Status queries are timing out; adaptive polling will back off to "
-                "keep commands responsive."
+                "Status queries are timing out; adaptive polling will back off and "
+                "use short probes to keep commands responsive."
             )
 
         if not recommendations:

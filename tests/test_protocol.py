@@ -127,10 +127,12 @@ class NeewerPerformanceTest(unittest.TestCase):
         self.assertEqual(performance.poll_backoff_seconds(4), 60)
 
     def test_query_timeout_accounts_for_weak_signal(self) -> None:
-        """Weak links get a little more time without blocking indefinitely."""
+        """Weak links get time, then use short probes after repeated misses."""
         self.assertEqual(performance.query_timeout_for_failures(0, -70), 0.5)
         self.assertEqual(performance.query_timeout_for_failures(0, -88), 0.65)
         self.assertEqual(performance.query_timeout_for_failures(2, -88), 0.75)
+        self.assertEqual(performance.query_timeout_for_failures(3, -88), 0.3)
+        self.assertEqual(performance.query_timeout_for_failures(10, -88), 0.3)
 
 
 if __name__ == "__main__":
