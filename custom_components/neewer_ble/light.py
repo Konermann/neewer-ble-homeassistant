@@ -12,6 +12,7 @@ from homeassistant.components.light import (
     ATTR_HS_COLOR,
     ColorMode,
     LightEntity,
+    LightEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -68,6 +69,9 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         min_kelvin, max_kelvin = device.color_temp_range
         self._attr_min_color_temp_kelvin = min_kelvin
         self._attr_max_color_temp_kelvin = max_kelvin
+
+        if device.effect_list:
+            self._attr_supported_features = LightEntityFeature.EFFECT
 
     @property
     def is_on(self) -> bool | None:

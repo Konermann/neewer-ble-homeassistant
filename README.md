@@ -93,6 +93,7 @@ After setup, the light appears as a normal Home Assistant light entity. You can:
 - Turn the light on and off.
 - Set brightness and color temperature.
 - Set RGB/HS color on supported lights.
+- Select FX effects from the light entity's effect control on supported lights.
 - Disconnect Home Assistant from the light so another Bluetooth app can connect.
 - Reconnect a stale BLE session.
 - Create a diagnostic dump from the device page.
