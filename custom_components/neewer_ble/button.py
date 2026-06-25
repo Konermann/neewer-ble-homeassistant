@@ -31,6 +31,7 @@ async def async_setup_entry(
         [
             NeewerReconnectButton(device, entry),
             NeewerDiagnosticDumpButton(device, entry),
+            NeewerBenchmarkButton(device, entry),
         ]
     )
 
@@ -85,6 +86,39 @@ class NeewerDiagnosticDumpButton(NeewerEntityMixin, ButtonEntity):
             title=f"Neewer BLE diagnostics: {self._device.name}",
             notification_id=(
                 "neewer_ble_diagnostics_"
+                f"{self._device.address.replace(':', '_').lower()}"
+            ),
+        )
+
+
+class NeewerBenchmarkButton(NeewerEntityMixin, ButtonEntity):
+    """Button that runs a lightweight BLE benchmark."""
+
+    _attr_has_entity_name = True
+    _attr_name = "BLE Benchmark"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:speedometer"
+
+    def __init__(self, device: NeewerLightDevice, entry: ConfigEntry) -> None:
+        """Initialize the button."""
+        self._setup_neewer_entity(device, entry, "ble_benchmark")
+
+    async def async_press(self) -> None:
+        """Run a BLE benchmark and show the result."""
+        benchmark = await self._device.async_benchmark()
+        benchmark_text = json.dumps(benchmark, indent=2, sort_keys=True)
+
+        _LOGGER.info(
+            "Neewer BLE benchmark for %s:\n%s",
+            self._device.name,
+            benchmark_text,
+        )
+        persistent_notification.async_create(
+            self.hass,
+            f"```json\n{benchmark_text}\n```",
+            title=f"Neewer BLE benchmark: {self._device.name}",
+            notification_id=(
+                "neewer_ble_benchmark_"
                 f"{self._device.address.replace(':', '_').lower()}"
             ),
         )

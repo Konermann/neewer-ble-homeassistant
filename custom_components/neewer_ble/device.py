@@ -6,6 +6,7 @@ import asyncio
 import logging
 import platform
 import subprocess
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -167,27 +168,29 @@ class NeewerLightDevice:
             if saturation is not None:
                 self._saturation = max(0, min(100, saturation))
 
-            success = await self._write_commands(
-                [
-                    self._protocol.build_power_command(True),
-                    self._protocol.build_hsi_command(
-                        self._hue, self._saturation, self._brightness
-                    ),
-                ],
-                delay=0.05,
+            commands = self._power_on_commands(
+                self._protocol.build_hsi_command(
+                    self._hue,
+                    self._saturation,
+                    self._brightness,
+                )
             )
+            success = await self._write_commands(commands, delay=_command_delay(commands))
             self._set_on_if_success(success, True)
             return success
 
         if self.is_cct_only:
             try:
+                commands = [
+                    self._protocol.build_brightness_only_command(self._brightness),
+                    self._protocol.build_temp_only_command(self._color_temp),
+                ]
+                if not self._is_on:
+                    commands.insert(0, self._protocol.build_power_command(True))
+
                 success = await self._write_commands(
-                    [
-                        self._protocol.build_power_command(True),
-                        self._protocol.build_brightness_only_command(self._brightness),
-                        self._protocol.build_temp_only_command(self._color_temp),
-                    ],
-                    delay=0.05,
+                    commands,
+                    delay=_command_delay(commands),
                 )
                 self._set_on_if_success(success, True)
                 return success
@@ -196,13 +199,10 @@ class NeewerLightDevice:
                 await self.disconnect()
                 return False
 
-        success = await self._write_commands(
-            [
-                self._protocol.build_power_command(True),
-                self._protocol.build_cct_command(self._brightness, self._color_temp),
-            ],
-            delay=0.05,
+        commands = self._power_on_commands(
+            self._protocol.build_cct_command(self._brightness, self._color_temp)
         )
+        success = await self._write_commands(commands, delay=_command_delay(commands))
         self._set_on_if_success(success, True)
         return success
 
@@ -228,17 +228,12 @@ class NeewerLightDevice:
             return await self.turn_off()
 
         if self.is_cct_only:
-            commands = [
-                self._protocol.build_power_command(True),
-                self._protocol.build_brightness_only_command(self._brightness),
-            ]
+            command = self._protocol.build_brightness_only_command(self._brightness)
         else:
-            commands = [
-                self._protocol.build_power_command(True),
-                self._protocol.build_cct_command(self._brightness, self._color_temp),
-            ]
+            command = self._protocol.build_cct_command(self._brightness, self._color_temp)
 
-        success = await self._write_commands(commands, delay=0.05)
+        commands = self._power_on_commands(command)
+        success = await self._write_commands(commands, delay=_command_delay(commands))
         self._set_on_if_success(success, True)
         return success
 
@@ -269,21 +264,20 @@ class NeewerLightDevice:
         if brightness is not None:
             self._brightness = max(0, min(100, brightness))
 
-        success = await self._write_commands(
-            [
-                self._protocol.build_power_command(True),
-                self._protocol.build_hsi_command(
-                    self._hue, self._saturation, self._brightness
-                ),
-            ],
-            delay=0.05,
+        commands = self._power_on_commands(
+            self._protocol.build_hsi_command(
+                self._hue,
+                self._saturation,
+                self._brightness,
+            )
         )
+        success = await self._write_commands(commands, delay=_command_delay(commands))
         self._set_on_if_success(success, True)
         return success
 
-    async def async_get_power_status(self) -> bool | None:
+    async def async_get_power_status(self, timeout: float = 0.5) -> bool | None:
         """Query the device power status."""
-        response = await self._connection.query(CMD_GET_POWER_STATUS)
+        response = await self._connection.query(CMD_GET_POWER_STATUS, timeout=timeout)
         if response is None or len(response) < 4:
             _LOGGER.debug("Failed to get power status from %s", self._name)
             return None
@@ -308,7 +302,7 @@ class NeewerLightDevice:
 
     async def async_get_channel_status(self) -> dict | None:
         """Query the device channel/mode status."""
-        response = await self._connection.query(CMD_GET_CHANNEL_STATUS)
+        response = await self._connection.query(CMD_GET_CHANNEL_STATUS, timeout=0.5)
         if response is None or len(response) < 4:
             _LOGGER.debug("Failed to get channel status from %s", self._name)
             return None
@@ -328,6 +322,10 @@ class NeewerLightDevice:
     async def async_update(self) -> bool:
         """Poll the device for current state."""
         try:
+            if self._connection.wrote_within(2.0):
+                _LOGGER.debug("Skipping poll for %s after recent command", self._name)
+                return False
+
             power_status = await self.async_get_power_status()
             if power_status is not None:
                 self._is_on = power_status
@@ -389,6 +387,30 @@ class NeewerLightDevice:
             "connection": self._connection.diagnostic_dump(),
         }
 
+    async def async_benchmark(self) -> dict[str, Any]:
+        """Run a lightweight BLE benchmark without changing light output."""
+        total_started_at = time.perf_counter()
+
+        connect_started_at = time.perf_counter()
+        connected = await self.connect()
+        connect_ms = _elapsed_ms(connect_started_at)
+
+        power_status = None
+        query_ms = None
+        if connected:
+            query_started_at = time.perf_counter()
+            power_status = await self.async_get_power_status(timeout=0.5)
+            query_ms = _elapsed_ms(query_started_at)
+
+        return {
+            "connected": connected,
+            "connect_ms": connect_ms,
+            "power_status": power_status,
+            "power_query_ms": query_ms,
+            "total_ms": _elapsed_ms(total_started_at),
+            "connection": self._connection.diagnostic_dump(),
+        }
+
     async def _write_command(self, command: list[int], keep_connected: bool = True) -> bool:
         """Write a single command."""
         return await self._write_commands([command], keep_connected=keep_connected)
@@ -401,6 +423,13 @@ class NeewerLightDevice:
     ) -> bool:
         """Write one or more commands."""
         return await self._connection.write_commands(commands, delay, keep_connected)
+
+    def _power_on_commands(self, command: list[int]) -> list[list[int]]:
+        """Return command sequence, including power-on only when needed."""
+        if self._is_on:
+            return [command]
+
+        return [self._protocol.build_power_command(True), command]
 
     def _set_on_if_success(self, success: bool, is_on: bool) -> None:
         """Update cached power state after a successful command."""
@@ -466,6 +495,19 @@ class NeewerLightDevice:
 
         _LOGGER.warning("Unexpected MAC format: %s", self._address)
         return [0, 0, 0, 0, 0, 0]
+
+
+def _command_delay(commands: list[list[int]]) -> float:
+    """Return inter-command delay only when a sequence needs it."""
+    if len(commands) > 1:
+        return 0.05
+
+    return 0.0
+
+
+def _elapsed_ms(started_at: float) -> float:
+    """Return elapsed milliseconds rounded for diagnostics."""
+    return round((time.perf_counter() - started_at) * 1000, 1)
 
 
 async def discover_neewer_lights(timeout: float = 10.0) -> list[BLEDevice]:

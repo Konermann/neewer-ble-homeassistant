@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 
 from bleak import BleakClient
@@ -38,6 +39,9 @@ class NeewerBLEConnection:
         self._last_commands: list[list[int]] = []
         self._last_error: str | None = None
         self._rssi: int | None = getattr(ble_device, "rssi", None)
+        self._last_timing: dict | None = None
+        self._timing_stats: dict[str, dict[str, float | int]] = {}
+        self._last_write_monotonic = 0.0
 
     @property
     def address(self) -> str:
@@ -58,6 +62,13 @@ class NeewerBLEConnection:
     def rssi(self) -> int | None:
         """Return the latest known RSSI."""
         return self._rssi
+
+    def wrote_within(self, seconds: float) -> bool:
+        """Return true if a write completed recently."""
+        if self._last_write_monotonic == 0.0:
+            return False
+
+        return time.monotonic() - self._last_write_monotonic < seconds
 
     def add_update_callback(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Add a callback for connection or signal updates."""
@@ -91,9 +102,13 @@ class NeewerBLEConnection:
             self._last_error = None
             return True
 
+        queued_at = time.perf_counter()
         async with self._lock:
+            started_at = time.perf_counter()
+            queue_wait_ms = _elapsed_ms(queued_at, started_at)
             if self.is_connected:
                 self._last_error = None
+                self._record_timing("connect", _elapsed_ms(started_at), queue_wait_ms)
                 return True
 
             try:
@@ -111,6 +126,7 @@ class NeewerBLEConnection:
                     max_attempts=MAX_CONNECTION_RETRIES,
                 )
                 _LOGGER.info("Connected to %s", self._name)
+                self._record_timing("connect", _elapsed_ms(started_at), queue_wait_ms)
                 self.notify_update_callbacks()
                 return True
             except BleakError as err:
@@ -121,6 +137,7 @@ class NeewerBLEConnection:
                 self._last_error = str(err)
 
             self._client = None
+            self._record_timing("connect", _elapsed_ms(started_at), queue_wait_ms)
             self.notify_update_callbacks()
             return False
 
@@ -143,8 +160,12 @@ class NeewerBLEConnection:
         keep_connected: bool = True,
     ) -> bool:
         """Write one or more commands as one serialized BLE operation."""
+        queued_at = time.perf_counter()
         async with self._command_lock:
+            started_at = time.perf_counter()
+            queue_wait_ms = _elapsed_ms(queued_at, started_at)
             if not await self.connect():
+                self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
                 return False
 
             success = False
@@ -168,10 +189,13 @@ class NeewerBLEConnection:
                         await asyncio.sleep(delay)
 
                 success = True
+                self._last_write_monotonic = time.monotonic()
+                self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
                 return True
             except BleakError as err:
                 _LOGGER.error("Failed to send command: %s", err)
                 self._last_error = str(err)
+                self._record_timing("write", _elapsed_ms(started_at), queue_wait_ms)
                 return False
             finally:
                 if not success or not keep_connected:
@@ -184,8 +208,12 @@ class NeewerBLEConnection:
         keep_connected: bool = True,
     ) -> bytes | None:
         """Send a query command and wait for a notification response."""
+        queued_at = time.perf_counter()
         async with self._command_lock:
+            started_at = time.perf_counter()
+            queue_wait_ms = _elapsed_ms(queued_at, started_at)
             if not await self.connect():
+                self._record_timing("query", _elapsed_ms(started_at), queue_wait_ms)
                 return None
 
             success = False
@@ -211,11 +239,13 @@ class NeewerBLEConnection:
                 try:
                     await asyncio.wait_for(self._notify_event.wait(), timeout=timeout)
                     success = True
+                    self._record_timing("query", _elapsed_ms(started_at), queue_wait_ms)
                     return self._notify_data
                 except asyncio.TimeoutError:
                     _LOGGER.debug("Timeout waiting for response from %s", self._name)
                     self._last_error = "timeout"
                     success = True
+                    self._record_timing("query", _elapsed_ms(started_at), queue_wait_ms)
                     return None
                 finally:
                     try:
@@ -225,6 +255,7 @@ class NeewerBLEConnection:
             except BleakError as err:
                 _LOGGER.debug("Error querying %s: %s", self._name, err)
                 self._last_error = str(err)
+                self._record_timing("query", _elapsed_ms(started_at), queue_wait_ms)
                 return None
             finally:
                 if not success or not keep_connected:
@@ -232,16 +263,29 @@ class NeewerBLEConnection:
 
     async def _disconnect(self) -> None:
         """Disconnect without acquiring the command lock."""
+        queued_at = time.perf_counter()
         async with self._lock:
+            started_at = time.perf_counter()
+            queue_wait_ms = _elapsed_ms(queued_at, started_at)
             self._last_operation = "disconnect"
             self._last_error = None
             client = self._client
             if client is None:
+                self._record_timing(
+                    "disconnect",
+                    _elapsed_ms(started_at),
+                    queue_wait_ms,
+                )
                 self.notify_update_callbacks()
                 return
 
             if not client.is_connected:
                 self._client = None
+                self._record_timing(
+                    "disconnect",
+                    _elapsed_ms(started_at),
+                    queue_wait_ms,
+                )
                 self.notify_update_callbacks()
                 return
 
@@ -258,6 +302,11 @@ class NeewerBLEConnection:
                 if self._client is client:
                     self._client = None
                 self._disconnect_requested = False
+                self._record_timing(
+                    "disconnect",
+                    _elapsed_ms(started_at),
+                    queue_wait_ms,
+                )
                 self.notify_update_callbacks()
 
     def _handle_disconnect(self, client: BleakClient) -> None:
@@ -288,4 +337,46 @@ class NeewerBLEConnection:
             "last_operation": self._last_operation,
             "last_commands": self._last_commands,
             "last_error": self._last_error,
+            "last_timing": self._last_timing,
+            "timing_stats": self._timing_stats,
         }
+
+    def _record_timing(
+        self,
+        operation: str,
+        duration_ms: float,
+        queue_wait_ms: float,
+    ) -> None:
+        """Record operation timing for diagnostics."""
+        duration_ms = round(duration_ms, 1)
+        queue_wait_ms = round(queue_wait_ms, 1)
+        self._last_timing = {
+            "operation": operation,
+            "duration_ms": duration_ms,
+            "queue_wait_ms": queue_wait_ms,
+        }
+
+        stats = self._timing_stats.setdefault(
+            operation,
+            {
+                "count": 0,
+                "avg_ms": 0.0,
+                "last_ms": 0.0,
+                "max_ms": 0.0,
+            },
+        )
+        count = int(stats["count"]) + 1
+        previous_avg = float(stats["avg_ms"])
+        stats["count"] = count
+        stats["last_ms"] = duration_ms
+        stats["avg_ms"] = round(
+            previous_avg + ((duration_ms - previous_avg) / count),
+            1,
+        )
+        stats["max_ms"] = max(float(stats["max_ms"]), duration_ms)
+
+
+def _elapsed_ms(started_at: float, ended_at: float | None = None) -> float:
+    """Return elapsed milliseconds."""
+    ended_at = ended_at or time.perf_counter()
+    return (ended_at - started_at) * 1000
