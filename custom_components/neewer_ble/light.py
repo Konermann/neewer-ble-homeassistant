@@ -81,6 +81,14 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
         return int(self._device.brightness * 2.55)
 
     @property
+    def color_mode(self) -> ColorMode:
+        """Return the current color mode."""
+        if self._device.color_mode == "hs" and self._device.supports_rgb:
+            return ColorMode.HS
+
+        return ColorMode.COLOR_TEMP
+
+    @property
     def color_temp_kelvin(self) -> int | None:
         """Return the color temperature in Kelvin."""
         return self._device.color_temp_kelvin
@@ -140,7 +148,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
                 await self._device.set_brightness(0)
             elif self._device.effect is not None:
                 await self._device.set_effect(self._device.effect, brightness_pct)
-            elif self._attr_color_mode == ColorMode.HS and self._device.supports_rgb:
+            elif self.color_mode == ColorMode.HS and self._device.supports_rgb:
                 await self._device.set_rgb(
                     hue=self._device.hue,
                     saturation=self._device.saturation,
@@ -148,7 +156,7 @@ class NeewerBLELight(NeewerEntityMixin, LightEntity):
                 )
             elif brightness_pct is not None:
                 await self._device.set_brightness(brightness_pct)
-        elif self._attr_color_mode == ColorMode.HS and self._device.supports_rgb:
+        elif self.color_mode == ColorMode.HS and self._device.supports_rgb:
             await self._device.set_rgb(
                 hue=self._device.hue,
                 saturation=self._device.saturation,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from .models import ModelInfo
 
@@ -24,6 +25,14 @@ INF_SCENE_PAYLOAD_CMD = 0x8B
 GM_NEUTRAL = 50
 DEFAULT_SCENE_SPEED = 5
 DEFAULT_SCENE_SPECIAL = 1
+_STATE_MODE_BYTES = {
+    STD_POWER_CMD,
+    STD_HSI_CMD,
+    STD_CCT_CMD,
+    STD_SCENE_CMD,
+    INF_SCENE_CMD,
+    INF_SCENE_PAYLOAD_CMD,
+}
 
 
 class NeewerProtocol:
@@ -158,6 +167,52 @@ class NeewerProtocol:
         max_protocol = round(max_k / 100)
         return round(min_protocol + (internal / 100) * (max_protocol - min_protocol))
 
+    def protocol_temp_to_internal(self, protocol_temp: int) -> int:
+        """Convert protocol color temperature units to internal 0-100 scale."""
+        min_protocol, max_protocol = self._protocol_temp_range()
+        if min_protocol == max_protocol:
+            return 0
+
+        protocol_temp = max(min_protocol, min(max_protocol, protocol_temp))
+        return round(
+            ((protocol_temp - min_protocol) / (max_protocol - min_protocol)) * 100
+        )
+
+    def parse_state_payload(self, data: bytes | list[int]) -> dict[str, Any] | None:
+        """Parse a light state payload from a status/query response."""
+        command = self._extract_state_command(data)
+        if command is None or len(command) < 4:
+            return None
+
+        mode = command[1]
+        if mode == STD_POWER_CMD and len(command) >= 4:
+            return {"mode": "power", "is_on": command[3] == 1}
+
+        if mode == STD_HSI_CMD and len(command) >= 7:
+            return {
+                "mode": "hs",
+                "hue": command[3] + (256 * command[4]),
+                "saturation": command[5],
+                "brightness": command[6],
+            }
+
+        if mode == STD_CCT_CMD and len(command) >= 5:
+            return {
+                "mode": "cct",
+                "brightness": command[3],
+                "color_temp": self.protocol_temp_to_internal(command[4]),
+            }
+
+        if mode in (STD_SCENE_CMD, INF_SCENE_PAYLOAD_CMD) and len(command) >= 5:
+            return self._parse_effect_state(command)
+
+        if mode == INF_SCENE_CMD:
+            nested_command = self._extract_infinity_scene_payload(command)
+            if nested_command is not None:
+                return self._parse_effect_state(nested_command)
+
+        return None
+
     def _build_standard_effect_command(
         self,
         effect_id: int,
@@ -233,6 +288,85 @@ class NeewerProtocol:
         min_k, max_k = self._model_info.cct_range
         return round(min_k / 100), round(max_k / 100)
 
+    def _extract_state_command(self, data: bytes | list[int]) -> list[int] | None:
+        """Return an embedded Neewer command from a status response."""
+        payload = list(data)
+        if len(payload) < 2 or payload[0] != 0x78:
+            return None
+
+        if payload[1] in _STATE_MODE_BYTES:
+            return payload
+
+        if payload[1] != 0x01:
+            return None
+
+        for index in range(2, min(len(payload), 8)):
+            if payload[index] == 0x78 and _has_state_mode_at(payload, index + 1):
+                return payload[index:]
+
+            if payload[index] in _STATE_MODE_BYTES:
+                return [0x78, *payload[index:]]
+
+        return None
+
+    def _extract_infinity_scene_payload(
+        self,
+        command: list[int],
+    ) -> list[int] | None:
+        """Return the nested scene payload from a wrapped Infinity scene command."""
+        try:
+            payload_mode_index = command.index(INF_SCENE_PAYLOAD_CMD)
+        except ValueError:
+            return None
+
+        if payload_mode_index + 1 >= len(command):
+            return None
+
+        nested = [
+            0x78,
+            INF_SCENE_PAYLOAD_CMD,
+            len(command) - payload_mode_index - 1,
+        ]
+        nested.extend(command[payload_mode_index + 1 :])
+        return nested
+
+    def _parse_effect_state(self, command: list[int]) -> dict[str, Any] | None:
+        """Parse a scene/FX payload."""
+        if self.light_type == 0 and command[1] == STD_SCENE_CMD:
+            return {
+                "mode": "effect",
+                "brightness": command[3],
+                "effect_id": command[4],
+            }
+
+        effect_id = command[3]
+        state: dict[str, Any] = {"mode": "effect", "effect_id": effect_id}
+
+        if len(command) > 4:
+            state["brightness"] = command[4]
+
+        if effect_id in (1, 2, 3, 4, 6, 8) and len(command) > 5:
+            state["color_temp"] = self.protocol_temp_to_internal(command[5])
+        elif effect_id in (5, 11, 16) and len(command) > 6:
+            state["brightness"] = command[5]
+            state["color_temp"] = self.protocol_temp_to_internal(command[6])
+        elif effect_id in (7, 9) and len(command) > 7:
+            state["hue"] = command[5] + (256 * command[6])
+            state["saturation"] = command[7]
+        elif effect_id == 13 and len(command) > 5:
+            state["color_temp"] = self.protocol_temp_to_internal(command[5])
+        elif effect_id == 14 and len(command) > 9:
+            state["brightness"] = command[6]
+            if command[4] == 0:
+                state["color_temp"] = self.protocol_temp_to_internal(command[9])
+            else:
+                state["hue"] = command[7] + (256 * command[8])
+        elif effect_id == 15 and len(command) > 8:
+            state["brightness"] = command[6]
+            state["hue"] = command[7] + (256 * command[8])
+
+        return state
+
 
 def calculate_checksum(data: list[int]) -> int:
     """Calculate protocol checksum."""
@@ -282,3 +416,8 @@ def _split_hue(hue: int) -> tuple[int, int]:
     """Split a 0-360 hue into low/high protocol bytes."""
     hue = max(0, min(360, hue))
     return hue & 0xFF, (hue >> 8) & 0xFF
+
+
+def _has_state_mode_at(payload: list[int], index: int) -> bool:
+    """Return true if an index points at a known state command byte."""
+    return index < len(payload) and payload[index] in _STATE_MODE_BYTES

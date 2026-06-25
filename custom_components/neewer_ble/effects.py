@@ -67,3 +67,34 @@ def effect_id_for_name(light_type: int, name: str) -> int | None:
             return effect.effect_id
 
     return None
+
+
+def effect_name_for_id(light_type: int, effect_id: int) -> str | None:
+    """Return the user-facing effect name for a protocol effect id."""
+    effect_id = _canonical_effect_id(light_type, effect_id)
+    for effect in effects_for_light_type(light_type):
+        if effect.effect_id == effect_id:
+            return effect.name
+
+    return None
+
+
+def _canonical_effect_id(light_type: int, effect_id: int) -> int:
+    """Normalize protocol-specific effect ids to the catalog ids."""
+    if light_type == 0 and effect_id < 20:
+        return effect_id + 20
+
+    if light_type > 0 and effect_id > 20:
+        return {
+            21: 10,
+            22: 8,
+            23: 12,
+            24: 12,
+            25: 17,
+            26: 11,
+            27: 1,
+            28: 2,
+            29: 15,
+        }.get(effect_id, effect_id)
+
+    return effect_id

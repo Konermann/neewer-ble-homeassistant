@@ -102,6 +102,61 @@ class NeewerProtocolTest(unittest.TestCase):
         self.assertEqual(commands[2][:12], [0x78, 0x91, 12, 1, 2, 3, 4, 5, 6, 0x8B, 6, 50])
         self.assertEqual(commands[2][12:15], [27, 50, 5])
 
+    def test_parse_cct_state_payload(self) -> None:
+        """CCT status payloads update brightness and color temperature."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        state = neewer_protocol.parse_state_payload(
+            [0x78, 0x87, 0x02, 50, 27, 50],
+        )
+
+        self.assertEqual(
+            state,
+            {
+                "mode": "cct",
+                "brightness": 50,
+                "color_temp": 0,
+            },
+        )
+
+    def test_parse_hs_state_payload(self) -> None:
+        """HSI status payloads update hue, saturation, and brightness."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        state = neewer_protocol.parse_state_payload(
+            [0x78, 0x86, 0x04, 240, 0, 80, 50],
+        )
+
+        self.assertEqual(
+            state,
+            {
+                "mode": "hs",
+                "hue": 240,
+                "saturation": 80,
+                "brightness": 50,
+            },
+        )
+
+    def test_parse_embedded_channel_status_payload(self) -> None:
+        """Channel status responses can contain an embedded state command."""
+        model = models.ModelInfo("CB100C", True, (2700, 6500), False, 1)
+        neewer_protocol = protocol.NeewerProtocol(model, lambda: [1, 2, 3, 4, 5, 6])
+
+        state = neewer_protocol.parse_state_payload(
+            [0x78, 0x01, 0x00, 0x87, 0x02, 75, 65, 50],
+        )
+
+        self.assertEqual(
+            state,
+            {
+                "mode": "cct",
+                "brightness": 75,
+                "color_temp": 100,
+            },
+        )
+
     def test_model_options_override_capabilities(self) -> None:
         """Options can override detected model parameters."""
         model = models.model_from_options(

@@ -15,7 +15,7 @@ from bleak.backends.device import BLEDevice
 
 from .connection import NeewerBLEConnection
 from .const import CMD_GET_CHANNEL_STATUS, CMD_GET_POWER_STATUS
-from .effects import effect_id_for_name, effect_names_for_light_type
+from .effects import effect_id_for_name, effect_name_for_id, effect_names_for_light_type
 from .models import ModelInfo, detect_model, is_neewer_device, normalize_model_info
 from .performance import (
     poll_backoff_seconds,
@@ -62,6 +62,7 @@ class NeewerLightDevice:
         self._color_temp = self._protocol.kelvin_to_internal(default_color_temp)
         self._hue = 0
         self._saturation = 100
+        self._color_mode = "cct"
         self._effect: str | None = None
         self._last_poll_success = False
         self._poll_failures = 0
@@ -127,6 +128,11 @@ class NeewerLightDevice:
     def saturation(self) -> int:
         """Return the cached saturation."""
         return self._saturation
+
+    @property
+    def color_mode(self) -> str:
+        """Return the cached direct light color mode."""
+        return self._color_mode
 
     @property
     def color_temp_kelvin(self) -> int:
@@ -218,9 +224,11 @@ class NeewerLightDevice:
 
         if color_temp_kelvin is not None:
             self._color_temp = self._protocol.kelvin_to_internal(color_temp_kelvin)
+            self._color_mode = "cct"
 
         if self.supports_rgb and hue is not None:
             self._hue = max(0, min(360, hue))
+            self._color_mode = "hs"
             if saturation is not None:
                 self._saturation = max(0, min(100, saturation))
 
@@ -245,6 +253,7 @@ class NeewerLightDevice:
                 if self._is_on is not True:
                     commands.insert(0, self._protocol.build_power_command(True))
 
+                self._color_mode = "cct"
                 success = await self._write_commands(commands)
                 self._set_on_if_success(success, True)
                 self._clear_effect_if_success(success)
@@ -257,6 +266,7 @@ class NeewerLightDevice:
         commands = self._power_on_commands(
             self._protocol.build_cct_command(self._brightness, self._color_temp)
         )
+        self._color_mode = "cct"
         success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
         self._clear_effect_if_success(success)
@@ -290,6 +300,7 @@ class NeewerLightDevice:
         else:
             command = self._protocol.build_cct_command(self._brightness, self._color_temp)
 
+        self._color_mode = "cct"
         commands = self._power_on_commands(command)
         success = await self._write_commands(commands)
         self._set_on_if_success(success, True)
@@ -299,8 +310,10 @@ class NeewerLightDevice:
     async def set_color_temp(self, kelvin: int) -> bool:
         """Set color temperature in Kelvin."""
         self._color_temp = self._protocol.kelvin_to_internal(kelvin)
+        self._color_mode = "cct"
 
         if self._is_on is False:
+            self._clear_effect_if_success(True)
             return True
 
         if self.is_cct_only:
@@ -322,6 +335,7 @@ class NeewerLightDevice:
 
         self._hue = max(0, min(360, hue))
         self._saturation = max(0, min(100, saturation))
+        self._color_mode = "hs"
         if brightness is not None:
             self._brightness = max(0, min(100, brightness))
 
@@ -399,18 +413,35 @@ class NeewerLightDevice:
         )
         return None
 
-    async def async_get_channel_status(self) -> dict | None:
+    async def async_get_channel_status(
+        self,
+        timeout: float | None = None,
+    ) -> dict | None:
         """Query the device channel/mode status."""
-        timeout = query_timeout_for_failures(self._poll_failures, self.rssi)
+        if timeout is None:
+            timeout = query_timeout_for_failures(self._poll_failures, self.rssi)
+
         response = await self._connection.query(CMD_GET_CHANNEL_STATUS, timeout=timeout)
         if response is None or len(response) < 4:
             _LOGGER.debug("Failed to get channel status from %s", self._name)
             return None
 
+        parsed_state = self._protocol.parse_state_payload(response)
         if response[0] == 0x78 and response[1] == 0x01:
             channel = response[3] if len(response) > 3 else 0
             _LOGGER.debug("Channel status for %s: channel=%d", self._name, channel)
-            return {"channel": channel, "raw": list(response)}
+            return {
+                "channel": channel,
+                "raw": list(response),
+                "state": parsed_state,
+            }
+
+        if parsed_state is not None:
+            return {
+                "channel": None,
+                "raw": list(response),
+                "state": parsed_state,
+            }
 
         _LOGGER.debug(
             "Unexpected response type from %s: %s",
@@ -456,21 +487,30 @@ class NeewerLightDevice:
             return False
 
     async def async_sync_state_after_connect(self) -> bool:
-        """Try once to sync power state after a new BLE connection."""
+        """Try once to sync power and color state after a new BLE connection."""
         power_status = await self.async_get_power_status(
             timeout=CONNECT_STATE_SYNC_TIMEOUT
         )
-        if power_status is None:
-            self._last_poll_success = False
-            self._record_poll_result(False)
-            self._connection.notify_update_callbacks()
-            return False
 
-        self._is_on = power_status
-        self._last_poll_success = True
-        self._record_poll_result(True)
+        channel_status = await self.async_get_channel_status(
+            timeout=CONNECT_STATE_SYNC_TIMEOUT
+        )
+        synced = False
+
+        if power_status is not None:
+            self._is_on = power_status
+            synced = True
+
+        if channel_status is not None:
+            parsed_state = channel_status.get("state")
+            if parsed_state is not None:
+                self._apply_synced_state(parsed_state)
+                synced = True
+
+        self._last_poll_success = synced
+        self._record_poll_result(synced)
         self._connection.notify_update_callbacks()
-        return True
+        return synced
 
     @property
     def last_poll_success(self) -> bool:
@@ -599,6 +639,35 @@ class NeewerLightDevice:
         """Clear cached FX state after returning to a direct light mode."""
         if success:
             self._effect = None
+
+    def _apply_synced_state(self, state: dict[str, Any]) -> None:
+        """Apply parsed status data from the light without writing to it."""
+        mode = state.get("mode")
+
+        if "brightness" in state:
+            self._brightness = max(0, min(100, int(state["brightness"])))
+
+        if "color_temp" in state:
+            self._color_temp = max(0, min(100, int(state["color_temp"])))
+
+        if "hue" in state:
+            self._hue = max(0, min(360, int(state["hue"])))
+
+        if "saturation" in state:
+            self._saturation = max(0, min(100, int(state["saturation"])))
+
+        if mode == "power" and "is_on" in state:
+            self._is_on = bool(state["is_on"])
+        elif mode == "cct":
+            self._color_mode = "cct"
+            self._effect = None
+        elif mode == "hs":
+            self._color_mode = "hs"
+            self._effect = None
+        elif mode == "effect":
+            effect_id = state.get("effect_id")
+            if effect_id is not None:
+                self._effect = effect_name_for_id(self.light_type, int(effect_id))
 
     def _record_poll_result(self, success: bool) -> None:
         """Update adaptive polling state from a status-query result."""
